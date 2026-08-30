@@ -99,5 +99,8 @@ async function worker() {
 }
 
 await Promise.all(Array.from({ length: Math.min(4, clips.length) }, () => worker()));
-writeFileSync(join(root, "clips.json"), `${JSON.stringify(clips.map(({ id }) => ({ id })), null, 2)}\n`);
+writeFileSync(join(root, "clips.json"), `${JSON.stringify(clips.map(({ id }) => ({
+  id,
+  rev: Math.floor(statSync(join(mediaDir, `${id}.mp4`)).mtimeMs),
+})), null, 2)}\n`);
 process.stdout.write("\n");

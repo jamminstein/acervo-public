@@ -35,8 +35,8 @@ for (const [index, clip] of clips.entries()) {
   const video = document.createElement("video");
   video.preload = "none";
   video.playsInline = true;
-  video.poster = `./posters/${clip.id}.jpg`;
-  video.src = `./media/${clip.id}.mp4`;
+  video.poster = `./posters/${clip.id}.jpg?v=${clip.rev}`;
+  video.src = `./media/${clip.id}.mp4?v=${clip.rev}`;
 
   video.addEventListener("ended", () => stop(video));
   tile.addEventListener("click", () => void toggle(video));
