@@ -22,6 +22,7 @@ assert.match(app, /createDynamicsCompressor/);
 assert.match(app, /createMediaElementSource\(player\)/);
 assert.match(app, /limiter\.threshold\.value = -1\.5/);
 assert.match(app, /shuffleQueue/);
+assert.match(app, /randomizedClips = shuffle\(clips\)/);
 assert.match(app, /playNext/);
 assert.match(app, /player\.addEventListener\("ended"/);
 assert.match(sync, /loudnorm=I=-16:LRA=11:TP=-1\.5/);

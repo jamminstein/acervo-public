@@ -108,8 +108,9 @@ async function toggle(tile) {
 
 const response = await fetch("./clips.json");
 const clips = await response.json();
+const randomizedClips = shuffle(clips);
 
-for (const [index, clip] of clips.entries()) {
+for (const [index, clip] of randomizedClips.entries()) {
   const tile = document.createElement("button");
   const poster = `./posters/${clip.id}.jpg?v=${clip.rev}`;
   tile.className = "video-tile";
