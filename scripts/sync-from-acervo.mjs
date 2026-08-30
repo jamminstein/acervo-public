@@ -15,7 +15,7 @@ mkdirSync(mediaDir, { recursive: true });
 mkdirSync(posterDir, { recursive: true });
 
 const query = `
-  SELECT id, path, duration, mtime
+  SELECT id, path, duration, mtime, width, height
   FROM items
   WHERE public=1 AND hidden=0 AND missing=0 AND kind='video'
   ORDER BY added_at DESC
@@ -43,19 +43,35 @@ async function transcode(clip) {
   const destination = join(mediaDir, `${clip.id}.mp4`);
   const poster = join(posterDir, `${clip.id}.jpg`);
   const sourceMtime = statSync(clip.path).mtimeMs;
+  const rotatePortrait = Number(clip.height) > Number(clip.width);
+  let needsVideo = !existsSync(destination) || statSync(destination).mtimeMs < sourceMtime;
 
-  if (!existsSync(destination) || statSync(destination).mtimeMs < sourceMtime) {
+  if (!needsVideo && rotatePortrait) {
+    const probe = JSON.parse(execFileSync("ffprobe", [
+      "-v", "error", "-select_streams", "v:0",
+      "-show_entries", "stream=width,height", "-of", "json", destination,
+    ], { encoding: "utf8" }));
+    const stream = probe.streams?.[0];
+    needsVideo = Number(stream?.height) > Number(stream?.width);
+  }
+
+  if (needsVideo) {
+    const videoFilter = [
+      rotatePortrait ? "transpose=clock" : null,
+      "scale=360:360:force_original_aspect_ratio=decrease:force_divisible_by=2",
+      "format=yuv420p",
+    ].filter(Boolean).join(",");
     await run("ffmpeg", [
       "-nostdin", "-hide_banner", "-loglevel", "error",
       "-i", clip.path,
       "-map", "0:v:0", "-map", "0:a:0?",
-      "-vf", "scale=360:360:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p",
+      "-vf", videoFilter,
       "-af", "loudnorm=I=-16:LRA=11:TP=-1.5",
       "-c:v", "libx264", "-preset", "medium", "-crf", "30",
       "-maxrate", "260k", "-bufsize", "520k",
       "-c:a", "aac", "-b:a", "64k", "-ar", "44100",
       "-movflags", "+faststart",
-      "-metadata", "comment=ACERVO web preview — source preserved",
+      "-metadata", `comment=ACERVO web preview — source preserved${rotatePortrait ? " — portrait rotated clockwise" : ""}`,
       "-y", destination,
     ], { maxBuffer: 8 * 1024 * 1024 });
   }
