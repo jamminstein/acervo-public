@@ -6,12 +6,18 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const html = readFileSync(join(root, "index.html"), "utf8");
 const app = readFileSync(join(root, "app.js"), "utf8");
+const styles = readFileSync(join(root, "styles.css"), "utf8");
 const sync = readFileSync(join(root, "scripts", "sync-from-acervo.mjs"), "utf8");
 const clips = JSON.parse(readFileSync(join(root, "clips.json"), "utf8"));
 
 assert.ok(clips.length > 0, "the page needs at least one public clip");
 assert.match(html, /id="clips"/);
+assert.match(html, /viewport-fit=cover/);
 assert.doesNotMatch(html, /<h[1-6]|<p\b|<nav\b|<header\b/i, "the page must contain no visible text interface");
+assert.match(styles, /safe-area-inset-top/);
+assert.match(styles, /touch-action: manipulation/);
+assert.match(styles, /100dvh/);
+assert.match(app, /webkit-playsinline/);
 assert.match(app, /createDynamicsCompressor/);
 assert.match(app, /createMediaElementSource\(player\)/);
 assert.match(app, /limiter\.threshold\.value = -1\.5/);

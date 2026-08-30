@@ -2,6 +2,9 @@ const grid = document.querySelector("#clips");
 const player = document.createElement("video");
 player.preload = "none";
 player.playsInline = true;
+player.controls = false;
+player.setAttribute("playsinline", "");
+player.setAttribute("webkit-playsinline", "");
 
 const tiles = [];
 let activeTile = null;
@@ -20,7 +23,8 @@ function shuffle(values) {
 }
 
 async function connectAudio() {
-  if (!audioContext) audioContext = new AudioContext();
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!audioContext) audioContext = new AudioContextClass();
 
   if (!audioChain) {
     const source = audioContext.createMediaElementSource(player);
@@ -65,7 +69,12 @@ async function playTile(tile) {
   try {
     await connectAudio();
     await player.play();
-    tile.scrollIntoView({ behavior: "smooth", block: "center" });
+    const compactScreen = window.matchMedia("(max-width: 560px)").matches;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    tile.scrollIntoView({
+      behavior: compactScreen || reducedMotion ? "auto" : "smooth",
+      block: "center",
+    });
   } catch {
     const failedTile = activeTile;
     stopPlayback();
@@ -113,6 +122,7 @@ for (const [index, clip] of clips.entries()) {
   image.alt = "";
   image.loading = "lazy";
   image.decoding = "async";
+  image.draggable = false;
   image.src = poster;
 
   tile.addEventListener("click", () => void toggle(tile));
