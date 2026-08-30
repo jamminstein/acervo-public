@@ -20,7 +20,9 @@ assert.match(styles, /100dvh/);
 assert.match(app, /webkit-playsinline/);
 assert.match(app, /createDynamicsCompressor/);
 assert.match(app, /createMediaElementSource\(player\)/);
-assert.match(app, /limiter\.threshold\.value = -1\.5/);
+assert.match(app, /createGain\(\)/);
+assert.match(app, /gainFromDecibels/);
+assert.match(app, /limiter\.threshold\.value = -3/);
 assert.match(app, /shuffleQueue/);
 assert.match(app, /randomizedClips = shuffle\(clips\)/);
 assert.match(app, /playNext/);
@@ -33,6 +35,7 @@ for (const clip of clips) {
   assert.ok(existsSync(video) && statSync(video).size > 0, `missing video ${clip.id}`);
   assert.ok(existsSync(poster) && statSync(poster).size > 0, `missing poster ${clip.id}`);
   assert.ok(statSync(video).size < 100 * 1024 * 1024, `video ${clip.id} exceeds GitHub's file limit`);
+  assert.ok(Number.isFinite(clip.gainDb) && Math.abs(clip.gainDb) <= 6, `invalid playback gain for ${clip.id}`);
 }
 
 console.log(`Verified ${clips.length} public clips.`);

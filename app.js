@@ -13,6 +13,10 @@ let playlistRunning = false;
 let audioContext = null;
 let audioChain = null;
 
+function gainFromDecibels(decibels) {
+  return 10 ** (decibels / 20);
+}
+
 function shuffle(values) {
   const result = [...values];
   for (let index = result.length - 1; index > 0; index -= 1) {
@@ -28,6 +32,7 @@ async function connectAudio() {
 
   if (!audioChain) {
     const source = audioContext.createMediaElementSource(player);
+    const normalization = audioContext.createGain();
     const compressor = audioContext.createDynamicsCompressor();
     const limiter = audioContext.createDynamicsCompressor();
 
@@ -37,14 +42,14 @@ async function connectAudio() {
     compressor.attack.value = 0.015;
     compressor.release.value = 0.25;
 
-    limiter.threshold.value = -1.5;
+    limiter.threshold.value = -3;
     limiter.knee.value = 0;
     limiter.ratio.value = 20;
-    limiter.attack.value = 0.003;
+    limiter.attack.value = 0.001;
     limiter.release.value = 0.1;
 
-    source.connect(compressor).connect(limiter).connect(audioContext.destination);
-    audioChain = { source, compressor, limiter };
+    source.connect(normalization).connect(compressor).connect(limiter).connect(audioContext.destination);
+    audioChain = { source, normalization, compressor, limiter };
   }
 
   if (audioContext.state === "suspended") await audioContext.resume();
@@ -68,6 +73,8 @@ async function playTile(tile) {
 
   try {
     await connectAudio();
+    const gainDb = Number(tile.dataset.gainDb || 0);
+    audioChain.normalization.gain.setValueAtTime(gainFromDecibels(gainDb), audioContext.currentTime);
     await player.play();
     const compactScreen = window.matchMedia("(max-width: 560px)").matches;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -118,6 +125,7 @@ for (const [index, clip] of randomizedClips.entries()) {
   tile.ariaLabel = `Play or stop clip ${index + 1}`;
   tile.dataset.poster = poster;
   tile.dataset.src = `./media/${clip.id}.mp4?v=${clip.rev}`;
+  tile.dataset.gainDb = String(clip.gainDb || 0);
 
   const image = document.createElement("img");
   image.alt = "";

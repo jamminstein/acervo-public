@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,15 @@ const run = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const mediaDir = join(root, "media");
 const posterDir = join(root, "posters");
+const clipsFile = join(root, "clips.json");
 const database = join(homedir(), "Library", "Application Support", "acervo", "acervo.db");
+const targetLufs = -16;
+const maxPlaybackGainDb = 6;
+
+const previousClips = existsSync(clipsFile)
+  ? JSON.parse(readFileSync(clipsFile, "utf8"))
+  : [];
+const previousById = new Map(previousClips.map((clip) => [Number(clip.id), clip]));
 
 mkdirSync(mediaDir, { recursive: true });
 mkdirSync(posterDir, { recursive: true });
@@ -38,6 +46,7 @@ for (const [directory, extension] of [[mediaDir, ".mp4"], [posterDir, ".jpg"]]) 
 
 let cursor = 0;
 let finished = 0;
+const prepared = new Map();
 
 async function transcode(clip) {
   const destination = join(mediaDir, `${clip.id}.mp4`);
@@ -91,6 +100,10 @@ async function transcode(clip) {
   }
 
   finished += 1;
+  prepared.set(clip.id, {
+    id: clip.id,
+    rev: Math.floor(statSync(destination).mtimeMs),
+  });
   process.stdout.write(`\rPrepared ${finished}/${clips.length} public clips`);
 }
 
@@ -102,8 +115,61 @@ async function worker() {
 }
 
 await Promise.all(Array.from({ length: Math.min(4, clips.length) }, () => worker()));
-writeFileSync(join(root, "clips.json"), `${JSON.stringify(clips.map(({ id }) => ({
-  id,
-  rev: Math.floor(statSync(join(mediaDir, `${id}.mp4`)).mtimeMs),
-})), null, 2)}\n`);
+process.stdout.write("\n");
+
+async function measureWebAudio(clip) {
+  const current = prepared.get(clip.id);
+  const previous = previousById.get(clip.id);
+  if (previous?.rev === current.rev
+    && Object.hasOwn(previous, "lufs")
+    && Number.isFinite(Number(previous.gainDb))) {
+    return { ...current, lufs: previous.lufs, truePeak: previous.truePeak, gainDb: previous.gainDb };
+  }
+
+  let stderr = "";
+  try {
+    ({ stderr } = await run("ffmpeg", [
+      "-nostdin", "-hide_banner", "-loglevel", "info",
+      "-i", join(mediaDir, `${clip.id}.mp4`),
+      "-map", "0:a:0", "-vn",
+      "-af", `loudnorm=I=${targetLufs}:LRA=11:TP=-1.5:print_format=json`,
+      "-f", "null", "-",
+    ], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 }));
+  } catch (error) {
+    const message = String(error?.stderr ?? error?.message ?? error);
+    if (/matches no streams|does not contain any stream/i.test(message)) {
+      return { ...current, lufs: null, truePeak: null, gainDb: 0 };
+    }
+    throw error;
+  }
+
+  const report = stderr.match(/\{\s*"input_i"[\s\S]*?\}/g)?.at(-1);
+  if (!report) throw new Error(`Could not measure public clip ${clip.id}`);
+  const measured = JSON.parse(report);
+  const lufs = Number(measured.input_i);
+  const truePeak = Number(measured.input_tp);
+  if (!Number.isFinite(lufs)) return { ...current, lufs: null, truePeak: null, gainDb: 0 };
+  const gainDb = Math.max(-maxPlaybackGainDb, Math.min(maxPlaybackGainDb, targetLufs - lufs));
+  return {
+    ...current,
+    lufs: Math.round(lufs * 100) / 100,
+    truePeak: Number.isFinite(truePeak) ? Math.round(truePeak * 100) / 100 : null,
+    gainDb: Math.round(gainDb * 100) / 100,
+  };
+}
+
+const measured = new Map();
+let measureCursor = 0;
+let measuredCount = 0;
+async function measureWorker() {
+  while (measureCursor < clips.length) {
+    const clip = clips[measureCursor++];
+    measured.set(clip.id, await measureWebAudio(clip));
+    measuredCount += 1;
+    process.stdout.write(`\rMeasured ${measuredCount}/${clips.length} public clips`);
+  }
+}
+
+await Promise.all(Array.from({ length: Math.min(12, clips.length) }, () => measureWorker()));
+writeFileSync(clipsFile, `${JSON.stringify(clips.map(({ id }) => measured.get(id)), null, 2)}\n`);
 process.stdout.write("\n");
