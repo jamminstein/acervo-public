@@ -12,6 +12,28 @@
   </head>
   <body>
     <main id="clips" class="video-grid" aria-label="ACERVO musical video selection"></main>
+    <div id="media-host" class="media-host" aria-hidden="true"></div>
+    <footer id="transport" class="transport" aria-label="Playback controls" hidden>
+      <button id="transport-toggle" class="transport-button transport-toggle" type="button" aria-label="Pause">
+        <span aria-hidden="true"></span>
+      </button>
+      <input
+        id="timeline"
+        class="timeline"
+        type="range"
+        min="0"
+        max="100"
+        step="0.01"
+        value="0"
+        aria-label="Playback position"
+      />
+      <span class="playlist-indicator" role="img" aria-label="Shuffled continuous playlist">
+        <i></i><i></i><i></i>
+      </span>
+      <button id="transport-next" class="transport-button transport-next" type="button" aria-label="Play another clip">
+        <span aria-hidden="true"></span>
+      </button>
+    </footer>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

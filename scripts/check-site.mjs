@@ -18,15 +18,22 @@ assert.match(styles, /safe-area-inset-top/);
 assert.match(styles, /touch-action: manipulation/);
 assert.match(styles, /100dvh/);
 assert.match(app, /webkit-playsinline/);
+assert.match(app, /IntersectionObserver/);
+assert.match(app, /new MediaMetadata/);
+assert.match(app, /mediaSession\.setActionHandler/);
+assert.match(app, /setPositionState/);
 assert.match(app, /createDynamicsCompressor/);
-assert.match(app, /createMediaElementSource\(player\)/);
+assert.match(app, /createMediaElementSource\(audioPlayer\)/);
 assert.match(app, /createGain\(\)/);
 assert.match(app, /gainFromDecibels/);
 assert.match(app, /limiter\.threshold\.value = -3/);
 assert.match(app, /shuffleQueue/);
 assert.match(app, /randomizedClips = shuffle\(clips\)/);
 assert.match(app, /playNext/);
-assert.match(app, /player\.addEventListener\("ended"/);
+assert.match(app, /audioPlayer\.addEventListener\("ended"/);
+assert.doesNotMatch(app, /document\.hidden && activeTile/, "backgrounding must not stop the soundtrack");
+assert.match(html, /id="transport"/);
+assert.match(styles, /\.tile-play/);
 assert.match(sync, /loudnorm=I=-16:LRA=11:TP=-1\.5/);
 
 for (const clip of clips) {
