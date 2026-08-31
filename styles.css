@@ -294,53 +294,16 @@ input {
 }
 
 .playlist-indicator {
-  position: relative;
-  display: block;
+  display: grid;
   width: 30px;
-  height: 24px;
-  opacity: 0.72;
-}
-
-.playlist-indicator::before,
-.playlist-indicator::after {
-  content: "";
-  position: absolute;
-  left: 3px;
-  width: 22px;
-  height: 7px;
-  border-top: 2px solid #fff;
-  transform: skewX(-35deg);
-}
-
-.playlist-indicator::before {
-  top: 6px;
-}
-
-.playlist-indicator::after {
-  top: 15px;
-  transform: scaleY(-1) skewX(-35deg);
-}
-
-.playlist-indicator i {
-  position: absolute;
-  right: 2px;
-  width: 4px;
-  height: 4px;
-  border-top: 2px solid #fff;
-  border-right: 2px solid #fff;
-  transform: rotate(45deg);
-}
-
-.playlist-indicator i:first-child {
-  top: 3px;
-}
-
-.playlist-indicator i:nth-child(2) {
-  top: 12px;
-}
-
-.playlist-indicator i:last-child {
-  display: none;
+  height: 30px;
+  place-items: center;
+  color: #fff;
+  font-family: "Apple Symbols", "Segoe UI Symbol", sans-serif;
+  font-size: 20px;
+  font-style: normal;
+  line-height: 1;
+  opacity: 0.82;
 }
 
 @media (hover: none) {
