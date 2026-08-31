@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { extractWaveform, isValidWaveform } from "./waveforms.mjs";
 
 const run = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -120,17 +121,27 @@ process.stdout.write("\n");
 async function measureWebAudio(clip) {
   const current = prepared.get(clip.id);
   const previous = previousById.get(clip.id);
+  const mediaPath = join(mediaDir, `${clip.id}.mp4`);
+  const waveform = previous?.rev === current.rev && isValidWaveform(previous.waveform)
+    ? previous.waveform
+    : await extractWaveform(mediaPath);
   if (previous?.rev === current.rev
     && Object.hasOwn(previous, "lufs")
     && Number.isFinite(Number(previous.gainDb))) {
-    return { ...current, lufs: previous.lufs, truePeak: previous.truePeak, gainDb: previous.gainDb };
+    return {
+      ...current,
+      lufs: previous.lufs,
+      truePeak: previous.truePeak,
+      gainDb: previous.gainDb,
+      waveform,
+    };
   }
 
   let stderr = "";
   try {
     ({ stderr } = await run("ffmpeg", [
       "-nostdin", "-hide_banner", "-loglevel", "info",
-      "-i", join(mediaDir, `${clip.id}.mp4`),
+      "-i", mediaPath,
       "-map", "0:a:0", "-vn",
       "-af", `loudnorm=I=${targetLufs}:LRA=11:TP=-1.5:print_format=json`,
       "-f", "null", "-",
@@ -138,7 +149,7 @@ async function measureWebAudio(clip) {
   } catch (error) {
     const message = String(error?.stderr ?? error?.message ?? error);
     if (/matches no streams|does not contain any stream/i.test(message)) {
-      return { ...current, lufs: null, truePeak: null, gainDb: 0 };
+      return { ...current, lufs: null, truePeak: null, gainDb: 0, waveform };
     }
     throw error;
   }
@@ -148,13 +159,14 @@ async function measureWebAudio(clip) {
   const measured = JSON.parse(report);
   const lufs = Number(measured.input_i);
   const truePeak = Number(measured.input_tp);
-  if (!Number.isFinite(lufs)) return { ...current, lufs: null, truePeak: null, gainDb: 0 };
+  if (!Number.isFinite(lufs)) return { ...current, lufs: null, truePeak: null, gainDb: 0, waveform };
   const gainDb = Math.max(-maxPlaybackGainDb, Math.min(maxPlaybackGainDb, targetLufs - lufs));
   return {
     ...current,
     lufs: Math.round(lufs * 100) / 100,
     truePeak: Number.isFinite(truePeak) ? Math.round(truePeak * 100) / 100 : null,
     gainDb: Math.round(gainDb * 100) / 100,
+    waveform,
   };
 }
 

@@ -37,6 +37,9 @@ assert.match(app, /audioPlayer\.addEventListener\("ended"/);
 assert.doesNotMatch(app, /document\.hidden && activeTile/, "backgrounding must not stop the soundtrack");
 assert.match(html, /id="transport"/);
 assert.doesNotMatch(html, /playlist-indicator|Shuffled continuous playlist/, "shuffle is implicit, not a control");
+assert.match(html, /id="waveform"/);
+assert.match(app, /drawWaveform/);
+assert.match(app, /clip\.waveform/);
 assert.match(styles, /\.tile-play/);
 assert.match(sync, /loudnorm=I=-16:LRA=11:TP=-1\.5/);
 
@@ -47,6 +50,7 @@ for (const clip of clips) {
   assert.ok(existsSync(poster) && statSync(poster).size > 0, `missing poster ${clip.id}`);
   assert.ok(statSync(video).size < 100 * 1024 * 1024, `video ${clip.id} exceeds GitHub's file limit`);
   assert.ok(Number.isFinite(clip.gainDb) && Math.abs(clip.gainDb) <= 6, `invalid playback gain for ${clip.id}`);
+  assert.equal(Buffer.from(clip.waveform || "", "base64").length, 96, `invalid waveform for ${clip.id}`);
 }
 
 console.log(`Verified ${clips.length} public clips.`);

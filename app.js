@@ -3,7 +3,10 @@ const mediaHost = document.querySelector("#media-host");
 const transport = document.querySelector("#transport");
 const transportToggle = document.querySelector("#transport-toggle");
 const transportNext = document.querySelector("#transport-next");
+const timelineShell = document.querySelector("#timeline-shell");
 const timeline = document.querySelector("#timeline");
+const waveformCanvas = document.querySelector("#waveform");
+const waveformContext = waveformCanvas.getContext("2d");
 
 // The soundtrack has a permanent HTML audio element so iOS and car systems keep
 // recognizing it after Safari leaves the foreground. Only the selected tile
@@ -26,6 +29,7 @@ let playHistory = [];
 let playlistRunning = false;
 let audioContext = null;
 let audioChain = null;
+const waveformCache = new WeakMap();
 
 function gainFromDecibels(decibels) {
   return 10 ** (decibels / 20);
@@ -153,6 +157,58 @@ function syncActivePreview() {
   }
 }
 
+function waveformForTile(tile) {
+  if (!tile?.dataset.waveform) return null;
+  if (waveformCache.has(tile)) return waveformCache.get(tile);
+
+  try {
+    const encoded = atob(tile.dataset.waveform);
+    const values = Uint8Array.from(encoded, (character) => character.charCodeAt(0));
+    waveformCache.set(tile, values);
+    return values;
+  } catch {
+    waveformCache.set(tile, null);
+    return null;
+  }
+}
+
+function drawWaveform(progress = Number(timeline.value) / 100) {
+  const bounds = timelineShell.getBoundingClientRect();
+  const width = Math.round(bounds.width);
+  const height = Math.round(bounds.height);
+  if (!width || !height) return;
+
+  const scale = Math.min(window.devicePixelRatio || 1, 2);
+  const canvasWidth = Math.round(width * scale);
+  const canvasHeight = Math.round(height * scale);
+  if (waveformCanvas.width !== canvasWidth || waveformCanvas.height !== canvasHeight) {
+    waveformCanvas.width = canvasWidth;
+    waveformCanvas.height = canvasHeight;
+  }
+
+  waveformContext.setTransform(scale, 0, 0, scale, 0, 0);
+  waveformContext.clearRect(0, 0, width, height);
+  const values = waveformForTile(activeTile);
+  if (!values?.length) return;
+
+  const center = height / 2;
+  const spacing = width / values.length;
+  const barWidth = Math.max(1, Math.min(2.5, spacing * 0.56));
+  const playedUntil = width * Math.max(0, Math.min(1, progress));
+
+  waveformContext.lineCap = "round";
+  waveformContext.lineWidth = barWidth;
+  for (const [index, value] of values.entries()) {
+    const x = (index + 0.5) * spacing;
+    const amplitude = 1.5 + (value / 255) * (center - 3);
+    waveformContext.strokeStyle = x <= playedUntil ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)";
+    waveformContext.beginPath();
+    waveformContext.moveTo(x, center - amplitude);
+    waveformContext.lineTo(x, center + amplitude);
+    waveformContext.stroke();
+  }
+}
+
 function updateTransport() {
   const duration = audioPlayer.duration;
   const progress = Number.isFinite(duration) && duration > 0 ? (audioPlayer.currentTime / duration) * 100 : 0;
@@ -160,6 +216,7 @@ function updateTransport() {
   timeline.style.setProperty("--progress", `${progress}%`);
   transportToggle.classList.toggle("is-paused", audioPlayer.paused);
   transportToggle.ariaLabel = audioPlayer.paused ? "Play" : "Pause";
+  drawWaveform(progress / 100);
 }
 
 function stopPlayback({ hideTransport = true } = {}) {
@@ -274,7 +331,7 @@ async function toggle(tile) {
   await playTile(tile);
 }
 
-const response = await fetch("./clips.json");
+const response = await fetch("./clips.json?v=20260831-4");
 const clips = await response.json();
 const randomizedClips = shuffle(clips);
 
@@ -287,6 +344,7 @@ for (const [index, clip] of randomizedClips.entries()) {
   tile.dataset.poster = poster;
   tile.dataset.src = `./media/${clip.id}.mp4?v=${clip.rev}`;
   tile.dataset.gainDb = String(clip.gainDb || 0);
+  tile.dataset.waveform = clip.waveform || "";
 
   const image = document.createElement("img");
   image.alt = "";
@@ -379,6 +437,12 @@ timeline.addEventListener("input", () => {
   syncActivePreview();
   updateTransport();
 });
+
+if ("ResizeObserver" in window) {
+  new ResizeObserver(() => drawWaveform()).observe(timelineShell);
+} else {
+  window.addEventListener("resize", () => drawWaveform());
+}
 
 if ("mediaSession" in navigator) {
   const actions = {

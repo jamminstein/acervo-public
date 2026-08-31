@@ -17,20 +17,23 @@
       <button id="transport-toggle" class="transport-button transport-toggle" type="button" aria-label="Pause">
         <span aria-hidden="true"></span>
       </button>
-      <input
-        id="timeline"
-        class="timeline"
-        type="range"
-        min="0"
-        max="100"
-        step="0.01"
-        value="0"
-        aria-label="Playback position"
-      />
+      <div id="timeline-shell" class="timeline-shell">
+        <canvas id="waveform" class="waveform" aria-hidden="true"></canvas>
+        <input
+          id="timeline"
+          class="timeline"
+          type="range"
+          min="0"
+          max="100"
+          step="0.01"
+          value="0"
+          aria-label="Playback position"
+        />
+      </div>
       <button id="transport-next" class="transport-button transport-next" type="button" aria-label="Play another clip">
         <span aria-hidden="true"></span>
       </button>
     </footer>
-    <script type="module" src="./app.js?v=20260831-3"></script>
+    <script type="module" src="./app.js?v=20260831-4"></script>
   </body>
 </html>
