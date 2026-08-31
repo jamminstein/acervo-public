@@ -6,7 +6,8 @@ const transportNext = document.querySelector("#transport-next");
 const timeline = document.querySelector("#timeline");
 
 // The soundtrack has a permanent HTML audio element so iOS and car systems keep
-// recognizing it after Safari leaves the foreground. Tile videos are silent visuals.
+// recognizing it after Safari leaves the foreground. Only the selected tile
+// loads a silent visual, keeping the rest of the grid lightweight.
 const audioPlayer = document.createElement("audio");
 audioPlayer.preload = "metadata";
 audioPlayer.controls = false;
@@ -17,17 +18,14 @@ const isIOS =
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const previewLimit = window.matchMedia("(max-width: 560px)").matches ? 6 : 12;
 
 const tiles = [];
-const visibleTiles = new Set();
 let activeTile = null;
 let shuffleQueue = [];
 let playHistory = [];
 let playlistRunning = false;
 let audioContext = null;
 let audioChain = null;
-let previewFrame = 0;
 
 function gainFromDecibels(decibels) {
   return 10 ** (decibels / 20);
@@ -93,7 +91,7 @@ function stopPreview(tile, unload = false) {
 
 function startPreview(tile) {
   const preview = tilePreview(tile);
-  if (!preview || reducedMotion || document.hidden) return;
+  if (!preview || document.hidden) return;
 
   if (!preview.hasAttribute("src")) {
     preview.src = tile.dataset.src;
@@ -103,31 +101,13 @@ function startPreview(tile) {
   void preview.play().catch(() => {});
 }
 
-function refreshPreviews() {
-  previewFrame = 0;
-  if (document.hidden) return;
-
-  const selected = new Set(
-    [...visibleTiles]
-      .sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top)
-      .slice(0, previewLimit),
-  );
-
-  for (const tile of tiles) {
-    if (selected.has(tile)) startPreview(tile);
-    else if (tile !== activeTile) stopPreview(tile, !visibleTiles.has(tile));
-  }
-}
-
-function schedulePreviewRefresh() {
-  if (!previewFrame) previewFrame = requestAnimationFrame(refreshPreviews);
-}
-
 function setActiveTile(tile) {
-  if (activeTile && activeTile !== tile) activeTile.classList.remove("is-active");
+  if (activeTile && activeTile !== tile) {
+    activeTile.classList.remove("is-active");
+    stopPreview(activeTile, true);
+  }
   activeTile = tile;
   if (tile) tile.classList.add("is-active");
-  schedulePreviewRefresh();
 }
 
 function setMediaPlaybackState(state) {
@@ -337,19 +317,6 @@ for (const [index, clip] of randomizedClips.entries()) {
   grid.append(tile);
 }
 
-const previewObserver = new IntersectionObserver(
-  (entries) => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) visibleTiles.add(entry.target);
-      else visibleTiles.delete(entry.target);
-    }
-    schedulePreviewRefresh();
-  },
-  { rootMargin: "80px 0px", threshold: 0.08 },
-);
-
-for (const tile of tiles) previewObserver.observe(tile);
-
 audioPlayer.addEventListener("play", () => {
   transport.hidden = false;
   document.body.classList.add("has-transport");
@@ -359,6 +326,7 @@ audioPlayer.addEventListener("play", () => {
 });
 
 audioPlayer.addEventListener("pause", () => {
+  tilePreview(activeTile)?.pause();
   if (!audioPlayer.ended) setMediaPlaybackState(activeTile ? "paused" : "none");
   updateTransport();
 });
@@ -385,13 +353,12 @@ audioPlayer.addEventListener("ended", () => {
 });
 
 document.addEventListener("visibilitychange", () => {
-  // Only the decorative video previews stop in the background. The persistent
+  // Only the selected video stops in the background. The persistent
   // audio element intentionally continues for lock-screen and car playback.
   if (document.hidden) {
-    for (const tile of tiles) stopPreview(tile);
+    tilePreview(activeTile)?.pause();
   } else {
-    schedulePreviewRefresh();
-    startPreview(activeTile);
+    if (!audioPlayer.paused) startPreview(activeTile);
     syncActivePreview();
   }
 });
