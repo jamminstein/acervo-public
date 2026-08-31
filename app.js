@@ -192,21 +192,36 @@ function drawWaveform(progress = Number(timeline.value) / 100) {
   if (!values?.length) return;
 
   const center = height / 2;
-  const spacing = width / values.length;
-  const barWidth = Math.max(1, Math.min(2.5, spacing * 0.56));
   const playedUntil = width * Math.max(0, Math.min(1, progress));
+  const amplitudes = Array.from(values, (_, index) => {
+    const start = Math.max(0, index - 2);
+    const end = Math.min(values.length, index + 3);
+    let sum = 0;
+    for (let neighbor = start; neighbor < end; neighbor += 1) sum += values[neighbor];
+    return 1.5 + (sum / (end - start) / 255) * (center - 3);
+  });
+  const shape = new Path2D();
 
-  waveformContext.lineCap = "round";
-  waveformContext.lineWidth = barWidth;
-  for (const [index, value] of values.entries()) {
-    const x = (index + 0.5) * spacing;
-    const amplitude = 1.5 + (value / 255) * (center - 3);
-    waveformContext.strokeStyle = x <= playedUntil ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)";
-    waveformContext.beginPath();
-    waveformContext.moveTo(x, center - amplitude);
-    waveformContext.lineTo(x, center + amplitude);
-    waveformContext.stroke();
+  shape.moveTo(0, center);
+  for (const [index, amplitude] of amplitudes.entries()) {
+    const x = (index / (amplitudes.length - 1)) * width;
+    shape.lineTo(x, center - amplitude);
   }
+  for (let index = amplitudes.length - 1; index >= 0; index -= 1) {
+    const x = (index / (amplitudes.length - 1)) * width;
+    shape.lineTo(x, center + amplitudes[index]);
+  }
+  shape.closePath();
+
+  waveformContext.fillStyle = "rgba(255,255,255,0.16)";
+  waveformContext.fill(shape);
+  waveformContext.save();
+  waveformContext.beginPath();
+  waveformContext.rect(0, 0, playedUntil, height);
+  waveformContext.clip();
+  waveformContext.fillStyle = "rgba(255,255,255,0.52)";
+  waveformContext.fill(shape);
+  waveformContext.restore();
 }
 
 function updateTransport() {

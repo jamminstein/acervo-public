@@ -40,6 +40,8 @@ assert.doesNotMatch(html, /playlist-indicator|Shuffled continuous playlist/, "sh
 assert.match(html, /id="waveform"/);
 assert.match(app, /drawWaveform/);
 assert.match(app, /clip\.waveform/);
+assert.match(app, /waveformContext\.fill\(shape\)/);
+assert.doesNotMatch(app, /barWidth/, "the waveform must be a continuous shape, not traces");
 assert.match(styles, /\.tile-play/);
 assert.match(sync, /loudnorm=I=-16:LRA=11:TP=-1\.5/);
 
