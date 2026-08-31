@@ -36,6 +36,7 @@ assert.match(app, /playNext/);
 assert.match(app, /audioPlayer\.addEventListener\("ended"/);
 assert.doesNotMatch(app, /document\.hidden && activeTile/, "backgrounding must not stop the soundtrack");
 assert.match(html, /id="transport"/);
+assert.doesNotMatch(html, /playlist-indicator|Shuffled continuous playlist/, "shuffle is implicit, not a control");
 assert.match(styles, /\.tile-play/);
 assert.match(sync, /loudnorm=I=-16:LRA=11:TP=-1\.5/);
 

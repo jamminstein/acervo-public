@@ -147,7 +147,7 @@ input {
   bottom: max(10px, env(safe-area-inset-bottom));
   left: max(12px, env(safe-area-inset-left));
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 34px 38px;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
   align-items: center;
   gap: 12px;
   min-height: 54px;
@@ -293,19 +293,6 @@ input {
   background: #fff;
 }
 
-.playlist-indicator {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  color: #fff;
-  font-family: "Apple Symbols", "Segoe UI Symbol", sans-serif;
-  font-size: 20px;
-  font-style: normal;
-  line-height: 1;
-  opacity: 0.82;
-}
-
 @media (hover: none) {
   .video-tile:not(.is-active) .tile-play {
     opacity: 0.46;
@@ -333,7 +320,7 @@ input {
     right: max(7px, env(safe-area-inset-right));
     bottom: max(7px, env(safe-area-inset-bottom));
     left: max(7px, env(safe-area-inset-left));
-    grid-template-columns: 36px minmax(0, 1fr) 28px 36px;
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
     gap: 7px;
     min-height: 50px;
     padding: 6px 7px;
