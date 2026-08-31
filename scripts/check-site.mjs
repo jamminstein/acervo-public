@@ -12,6 +12,7 @@ const clips = JSON.parse(readFileSync(join(root, "clips.json"), "utf8"));
 
 assert.ok(clips.length > 0, "the page needs at least one public clip");
 assert.match(html, /id="clips"/);
+assert.match(html, /app\.js\?v=[a-z0-9-]+/, "the player needs a cache-busting version");
 assert.match(html, /viewport-fit=cover/);
 assert.doesNotMatch(html, /<h[1-6]|<p\b|<nav\b|<header\b/i, "the page must contain no visible text interface");
 assert.match(styles, /safe-area-inset-top/);
