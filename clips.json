@@ -3682,27 +3682,6 @@
     "gainDb": -0.3
   },
   {
-    "id": 11816,
-    "rev": 1788125693020,
-    "lufs": null,
-    "truePeak": null,
-    "gainDb": 0
-  },
-  {
-    "id": 11815,
-    "rev": 1788125693155,
-    "lufs": null,
-    "truePeak": null,
-    "gainDb": 0
-  },
-  {
-    "id": 11814,
-    "rev": 1788125693448,
-    "lufs": null,
-    "truePeak": null,
-    "gainDb": 0
-  },
-  {
     "id": 11810,
     "rev": 1788125698909,
     "lufs": -15.67,
