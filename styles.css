@@ -2,6 +2,14 @@
   box-sizing: border-box;
 }
 
+@font-face {
+  font-family: "xxQueen Basic";
+  src: url("https://jamminstein.github.io/tiago-lol/assets/fonts/xxqueen-basic.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 html,
 body {
   min-height: 100%;
@@ -16,6 +24,61 @@ html {
 body {
   min-height: 100dvh;
   overflow-x: hidden;
+}
+
+.tiago-portal-nav {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  right: auto;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.35rem;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 8px 15px 7px;
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  color: #fff;
+  font-family: "xxQueen Basic", serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .tiago-portal-nav {
+    background: rgba(0, 0, 0, 0.92);
+  }
+}
+
+.tiago-portal-nav a,
+.tiago-portal-nav a:visited {
+  color: #fff;
+  text-decoration: none;
+  opacity: 1;
+  transition: opacity 140ms ease;
+}
+
+.tiago-portal-nav a:hover,
+.tiago-portal-nav a:focus-visible {
+  opacity: 0.62;
+}
+
+.tiago-portal-nav a:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
 }
 
 button,
@@ -348,6 +411,7 @@ input {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tiago-portal-nav a,
   .video-grid,
   .video-tile video,
   .tile-play {
