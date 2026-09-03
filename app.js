@@ -17,9 +17,6 @@ audioPlayer.controls = false;
 audioPlayer.setAttribute("x-webkit-airplay", "allow");
 mediaHost.append(audioPlayer);
 
-const isIOS =
-  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const tiles = [];
@@ -27,8 +24,6 @@ let activeTile = null;
 let shuffleQueue = [];
 let playHistory = [];
 let playlistRunning = false;
-let audioContext = null;
-let audioChain = null;
 const waveformCache = new WeakMap();
 
 function gainFromDecibels(decibels) {
@@ -42,40 +37,6 @@ function shuffle(values) {
     [result[index], result[swapWith]] = [result[swapWith], result[index]];
   }
   return result;
-}
-
-async function connectAudio() {
-  // iOS receives the already-normalized derivative directly. This avoids Web
-  // Audio suspension when the lock screen or CarPlay takes over playback.
-  if (isIOS) return;
-
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return;
-  if (!audioContext) audioContext = new AudioContextClass();
-
-  if (!audioChain) {
-    const source = audioContext.createMediaElementSource(audioPlayer);
-    const normalization = audioContext.createGain();
-    const compressor = audioContext.createDynamicsCompressor();
-    const limiter = audioContext.createDynamicsCompressor();
-
-    compressor.threshold.value = -12;
-    compressor.knee.value = 12;
-    compressor.ratio.value = 2;
-    compressor.attack.value = 0.015;
-    compressor.release.value = 0.25;
-
-    limiter.threshold.value = -3;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.001;
-    limiter.release.value = 0.1;
-
-    source.connect(normalization).connect(compressor).connect(limiter).connect(audioContext.destination);
-    audioChain = { source, normalization, compressor, limiter };
-  }
-
-  if (audioContext.state === "suspended") await audioContext.resume();
 }
 
 function tilePreview(tile) {
@@ -249,22 +210,15 @@ function stopPlayback({ hideTransport = true } = {}) {
 async function resumePlayback() {
   if (!activeTile) return;
   try {
-    await connectAudio();
     await audioPlayer.play();
   } catch {}
 }
 
 function configureTileGain(tile) {
   const gainDb = Number(tile.dataset.gainDb || 0);
-  if (isIOS || !audioChain) {
-    // The web exports are already loudness-normalized; negative residual
-    // correction can safely attenuate the direct system-audio path.
-    audioPlayer.volume = Math.min(1, gainFromDecibels(gainDb));
-    return;
-  }
-
-  audioPlayer.volume = 1;
-  audioChain.normalization.gain.setValueAtTime(gainFromDecibels(gainDb), audioContext.currentTime);
+  // Every published clip has an offline master. Keeping this on the native
+  // media path makes the same soundtrack reliable in Safari and CarPlay.
+  audioPlayer.volume = Math.min(1, gainFromDecibels(gainDb));
 }
 
 async function playTile(tile, { rememberCurrent = true } = {}) {
@@ -287,7 +241,6 @@ async function playTile(tile, { rememberCurrent = true } = {}) {
   updateMediaMetadata(tile);
 
   try {
-    await connectAudio();
     configureTileGain(tile);
     await audioPlayer.play();
     const compactScreen = window.matchMedia("(max-width: 560px)").matches;

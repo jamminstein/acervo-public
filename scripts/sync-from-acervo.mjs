@@ -12,8 +12,6 @@ const mediaDir = join(root, "media");
 const posterDir = join(root, "posters");
 const clipsFile = join(root, "clips.json");
 const database = join(homedir(), "Library", "Application Support", "acervo", "acervo.db");
-const targetLufs = -16;
-const maxPlaybackGainDb = 6;
 
 const previousClips = existsSync(clipsFile)
   ? JSON.parse(readFileSync(clipsFile, "utf8"))
@@ -62,9 +60,7 @@ async function transcode(clip) {
       "-of", "json", destination,
     ], { encoding: "utf8" }));
     const video = probe.streams?.find((stream) => stream.codec_type === "video");
-    const audio = probe.streams?.find((stream) => stream.codec_type === "audio");
     needsVideo = Math.max(Number(video?.width), Number(video?.height)) > 240
-      || Number(audio?.bit_rate || 0) > 52_000
       || (rotatePortrait && Number(video?.height) > Number(video?.width));
   }
 
@@ -77,12 +73,10 @@ async function transcode(clip) {
     await run("ffmpeg", [
       "-nostdin", "-hide_banner", "-loglevel", "error",
       "-i", clip.path,
-      "-map", "0:v:0", "-map", "0:a:0?",
+      "-map", "0:v:0", "-an",
       "-vf", videoFilter,
-      "-af", "loudnorm=I=-16:LRA=11:TP=-1.5",
       "-c:v", "libx264", "-preset", "medium", "-crf", "35",
       "-maxrate", "55k", "-bufsize", "110k",
-      "-c:a", "aac", "-b:a", "48k", "-ar", "32000",
       "-movflags", "+faststart",
       "-metadata", `comment=ACERVO web preview — source preserved${rotatePortrait ? " — portrait rotated clockwise" : ""}`,
       "-y", destination,
@@ -104,6 +98,7 @@ async function transcode(clip) {
   prepared.set(clip.id, {
     id: clip.id,
     rev: Math.floor(statSync(destination).mtimeMs),
+    sourceMtime: Number(clip.mtime),
   });
   process.stdout.write(`\rPrepared ${finished}/${clips.length} public clips`);
 }
@@ -118,50 +113,13 @@ async function worker() {
 await Promise.all(Array.from({ length: Math.min(4, clips.length) }, () => worker()));
 process.stdout.write("\n");
 
-async function measureWebAudio(clip) {
+async function prepareMetadata(clip) {
   const current = prepared.get(clip.id);
   const previous = previousById.get(clip.id);
-  const mediaPath = join(mediaDir, `${clip.id}.mp4`);
-  const waveform = previous?.rev === current.rev && isValidWaveform(previous.waveform)
+  const waveform = previous?.sourceMtime === current.sourceMtime && isValidWaveform(previous.waveform)
     ? previous.waveform
-    : await extractWaveform(mediaPath);
-  if (previous?.rev === current.rev
-    && Object.hasOwn(previous, "lufs")
-    && Number.isFinite(Number(previous.gainDb))) {
-    return { ...previous, ...current, waveform };
-  }
-
-  let stderr = "";
-  try {
-    ({ stderr } = await run("ffmpeg", [
-      "-nostdin", "-hide_banner", "-loglevel", "info",
-      "-i", mediaPath,
-      "-map", "0:a:0", "-vn",
-      "-af", `loudnorm=I=${targetLufs}:LRA=11:TP=-1.5:print_format=json`,
-      "-f", "null", "-",
-    ], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 }));
-  } catch (error) {
-    const message = String(error?.stderr ?? error?.message ?? error);
-    if (/matches no streams|does not contain any stream/i.test(message)) {
-      return { ...current, lufs: null, truePeak: null, gainDb: 0, waveform };
-    }
-    throw error;
-  }
-
-  const report = stderr.match(/\{\s*"input_i"[\s\S]*?\}/g)?.at(-1);
-  if (!report) throw new Error(`Could not measure public clip ${clip.id}`);
-  const measured = JSON.parse(report);
-  const lufs = Number(measured.input_i);
-  const truePeak = Number(measured.input_tp);
-  if (!Number.isFinite(lufs)) return { ...current, lufs: null, truePeak: null, gainDb: 0, waveform };
-  const gainDb = Math.max(-maxPlaybackGainDb, Math.min(maxPlaybackGainDb, targetLufs - lufs));
-  return {
-    ...current,
-    lufs: Math.round(lufs * 100) / 100,
-    truePeak: Number.isFinite(truePeak) ? Math.round(truePeak * 100) / 100 : null,
-    gainDb: Math.round(gainDb * 100) / 100,
-    waveform,
-  };
+    : await extractWaveform(clip.path);
+  return { ...previous, ...current, waveform };
 }
 
 const measured = new Map();
@@ -170,7 +128,7 @@ let measuredCount = 0;
 async function measureWorker() {
   while (measureCursor < clips.length) {
     const clip = clips[measureCursor++];
-    measured.set(clip.id, await measureWebAudio(clip));
+    measured.set(clip.id, await prepareMetadata(clip));
     measuredCount += 1;
     process.stdout.write(`\rMeasured ${measuredCount}/${clips.length} public clips`);
   }
@@ -179,5 +137,4 @@ async function measureWorker() {
 await Promise.all(Array.from({ length: Math.min(12, clips.length) }, () => measureWorker()));
 writeFileSync(clipsFile, `${JSON.stringify(clips.map(({ id }) => measured.get(id)), null, 2)}\n`);
 process.stdout.write("\n");
-execFileSync(process.execPath, [join(root, "scripts", "analyze-audio-safety.mjs")], { stdio: "inherit" });
-execFileSync(process.execPath, [join(root, "scripts", "prepare-safe-audio.mjs")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(root, "scripts", "master-public-audio.mjs")], { stdio: "inherit" });
