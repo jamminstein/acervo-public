@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -10,6 +10,7 @@ const app = readFileSync(join(root, "app.js"), "utf8");
 const styles = readFileSync(join(root, "styles.css"), "utf8");
 const sync = readFileSync(join(root, "scripts", "sync-from-acervo.mjs"), "utf8");
 const clips = JSON.parse(readFileSync(join(root, "clips.json"), "utf8"));
+const audioRoot = resolve(root, "..", "acervo-public-audio");
 
 assert.ok(clips.length > 0, "the page needs at least one public clip");
 assert.match(html, /id="clips"/);
@@ -30,6 +31,9 @@ assert.match(app, /setPositionState/);
 assert.doesNotMatch(app, /AudioContext|createMediaElementSource|createDynamicsCompressor/, "playback must stay on the CarPlay-compatible native media path");
 assert.match(app, /gainFromDecibels/);
 assert.match(app, /tile\.dataset\.audioSrc \|\| tile\.dataset\.src/);
+assert.match(app, /https:\/\/jamminstein\.github\.io\/acervo-public-audio/);
+assert.match(app, /function prefetchNextAudio/);
+assert.match(app, /cache: "force-cache"/);
 assert.match(app, /clip\.safetyGainDb/);
 assert.match(app, /shuffleQueue/);
 assert.match(app, /randomizedClips = shuffle\(clips\)/);
@@ -51,25 +55,38 @@ let publishedBytes = statSync(join(root, "index.html")).size
   + statSync(join(root, "app.js")).size
   + statSync(join(root, "styles.css")).size
   + statSync(join(root, "clips.json")).size;
+let audioBytes = 0;
 
 for (const clip of clips) {
   const video = join(root, "media", `${clip.id}.mp4`);
   const poster = join(root, "posters", `${clip.id}.jpg`);
-  const audio = join(root, "audio", `${clip.id}.m4a`);
+  const audio = join(audioRoot, `${clip.id}.m4a`);
   assert.ok(existsSync(video) && statSync(video).size > 0, `missing video ${clip.id}`);
   assert.ok(existsSync(poster) && statSync(poster).size > 0, `missing poster ${clip.id}`);
   assert.ok(existsSync(audio) && statSync(audio).size > 0, `missing mastered audio ${clip.id}`);
   assert.ok(statSync(video).size < 100 * 1024 * 1024, `video ${clip.id} exceeds GitHub's file limit`);
+  assert.ok(statSync(audio).size < 100 * 1024 * 1024, `audio ${clip.id} exceeds GitHub's file limit`);
   assert.equal(clip.gainDb, 0, `clip ${clip.id} must not need live gain correction`);
   assert.equal(clip.safetyGainDb, 0, `clip ${clip.id} must not need live safety correction`);
-  assert.equal(clip.safetyProfile, 7, `outdated audio safety analysis for ${clip.id}`);
+  assert.equal(clip.safetyProfile, 8, `outdated audio safety analysis for ${clip.id}`);
   assert.ok(Number.isFinite(clip.maxMomentary) && Number.isFinite(clip.maxShortTerm), `missing perceived-loudness analysis for ${clip.id}`);
   assert.equal(Buffer.from(clip.waveform || "", "base64").length, 96, `invalid waveform for ${clip.id}`);
-  assert.equal(clip.audioProfile, 7, `outdated mastered audio for ${clip.id}`);
-  assert.equal(clip.audioProfileName, "car-consistent-v1", `wrong mastering profile for ${clip.id}`);
+  assert.equal(clip.audioProfile, 8, `outdated mastered audio for ${clip.id}`);
+  assert.equal(clip.audioProfileName, "car-consistent-v2-noise-aware-originals", `wrong mastering profile for ${clip.id}`);
+  assert.equal(clip.audioBitrateKbps, 96, `wrong AAC quality for ${clip.id}`);
+  assert.match(clip.audioSourceSignature, /^archive:/, `clip ${clip.id} was not mastered from its original`);
+  assert.equal(clip.sourceProfileVersion, 1, `missing source profile for ${clip.id}`);
+  assert.ok(Number.isFinite(clip.sourceBassDelta) && Number.isFinite(clip.sourcePresenceDelta), `missing tonal profile for ${clip.id}`);
+  assert.ok(Number.isFinite(clip.sourceChannelImbalance) && Number.isFinite(clip.sourceMonoDelta), `missing channel profile for ${clip.id}`);
+  assert.ok(Number.isFinite(clip.audioIntroRms), `missing opening-noise analysis for ${clip.id}`);
+  assert.ok(clip.audioGateThresholdDb <= -38, `unsafe gate threshold for ${clip.id}`);
+  assert.ok(clip.audioCompressorThresholdDb <= -18, `invalid compressor threshold for ${clip.id}`);
+  assert.ok(clip.audioOutputPadDb <= -1.5, `missing codec peak safety margin for ${clip.id}`);
+  assert.ok(clip.audioIntroRms <= clip.sourceIntroRms + clip.audioMasterGainDb + 1.5, `opening noise was raised unexpectedly for ${clip.id}`);
+  assert.ok(clip.audioChannelMode === "stereo" || clip.audioChannelImbalance <= 1, `channel repair failed for ${clip.id}`);
   assert.ok(clip.audioLufs >= -17 && clip.audioLufs <= -15, `uneven integrated loudness for ${clip.id}`);
   assert.ok(clip.audioLra <= 10 || clip.audioMaxMomentary <= -11.5, `uncontrolled loudness range for ${clip.id}`);
-  assert.ok(clip.audioTruePeak <= -0.5, `unsafe true peak for ${clip.id}`);
+  assert.ok(clip.audioTruePeak <= -1, `unsafe true peak for ${clip.id}`);
   assert.ok(clip.audioMaxMomentary <= -9.5, `unsafe momentary loudness for ${clip.id}`);
   assert.ok(clip.audioMaxShortTerm <= -11, `unsafe short-term loudness for ${clip.id}`);
 
@@ -77,9 +94,11 @@ for (const clip of clips) {
     "-v", "error", "-show_entries", "stream=codec_type", "-of", "json", video,
   ], { encoding: "utf8" })).streams || [];
   assert.ok(!streams.some((stream) => stream.codec_type === "audio"), `video ${clip.id} still duplicates its old audio`);
-  publishedBytes += statSync(video).size + statSync(poster).size + statSync(audio).size;
+  publishedBytes += statSync(video).size + statSync(poster).size;
+  audioBytes += statSync(audio).size;
 }
 
 assert.ok(publishedBytes < 1_000_000_000, `published site is ${(publishedBytes / 1_000_000).toFixed(1)} MB and exceeds GitHub Pages' 1 GB limit`);
+assert.ok(audioBytes < 1_000_000_000, `published audio is ${(audioBytes / 1_000_000).toFixed(1)} MB and exceeds GitHub Pages' 1 GB limit`);
 
-console.log(`Verified ${clips.length} public clips and ${(publishedBytes / 1_000_000).toFixed(1)} MB of published media.`);
+console.log(`Verified ${clips.length} public clips: ${(publishedBytes / 1_000_000).toFixed(1)} MB visual site and ${(audioBytes / 1_000_000).toFixed(1)} MB mastered audio site.`);

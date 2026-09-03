@@ -10,35 +10,41 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { analyzeMeanVolume, analyzeToneAndChannels } from "./audio-profile.mjs";
 import { analyzeAudioSafety } from "./audio-safety.mjs";
 
 const run = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const clipsFile = join(root, "clips.json");
 const mediaDir = join(root, "media");
-const audioDir = join(root, "audio");
+const audioDir = resolve(process.env.ACERVO_AUDIO_DIR || join(root, "..", "acervo-public-audio"));
 const database = join(homedir(), "Library", "Application Support", "acervo", "acervo.db");
 
-// This is deliberately baked into a normal AAC soundtrack. iOS and CarPlay can
-// suspend Web Audio processing in the background, while a regular media track
-// keeps using the system playback path.
-export const masteringProfile = 7;
-export const masteringProfileName = "car-consistent-v1";
-const targetLufs = -16;
+// The entire chain is rendered into a normal AAC soundtrack. Fixed programme
+// gain avoids the local noise-floor lift caused by dynamic normalization, and
+// the native media path remains dependable when Safari is backgrounded or used
+// through CarPlay.
+export const masteringProfile = 8;
+export const masteringProfileName = "car-consistent-v2-noise-aware-originals";
+const targetLufs = -16.2;
 const hardQuietFloor = -17;
 const hardLoudCeiling = -15;
-const truePeakCeiling = -0.5;
+const truePeakCeiling = -1;
 const momentaryCeiling = -9.5;
 const shortTermCeiling = -11;
-// Preserve some intentional musical dynamics while preventing unusually wide
-// clips from behaving like a different master in a noisy listening space.
 const lraCeiling = 10;
+const sourceProfileVersion = 1;
 
-const clips = JSON.parse(readFileSync(clipsFile, "utf8"));
-const selected = new Set(clips.map((clip) => String(clip.id)));
+const allClips = JSON.parse(readFileSync(clipsFile, "utf8"));
+const requestedIds = new Set((process.env.ACERVO_CLIP_IDS || "").split(",").filter(Boolean));
+const forceMaster = process.env.ACERVO_FORCE_MASTER === "1";
+const clips = requestedIds.size
+  ? allClips.filter((clip) => requestedIds.has(String(clip.id)))
+  : allClips;
+const selected = new Set(allClips.map((clip) => String(clip.id)));
 mkdirSync(audioDir, { recursive: true });
 
 function databaseSources() {
@@ -69,11 +75,8 @@ function hasAudio(path) {
 }
 
 function sourceForClip(clip) {
-  const archiveSource = sourceById.get(String(clip.id));
-  if (archiveSource && hasAudio(archiveSource)) return { path: archiveSource, kind: "archive" };
-  const webDerivative = join(mediaDir, `${clip.id}.mp4`);
-  if (hasAudio(webDerivative)) return { path: webDerivative, kind: "web-derivative" };
-  return null;
+  const path = sourceById.get(String(clip.id));
+  return path && hasAudio(path) ? { path, kind: "archive" } : null;
 }
 
 function sourceSignature(source) {
@@ -82,25 +85,127 @@ function sourceSignature(source) {
 }
 
 function dbToLinear(decibels) {
-  return (10 ** (decibels / 20)).toFixed(6);
+  return (10 ** (decibels / 20)).toFixed(8);
 }
 
-function masteringFilter({
-  loudnessTarget,
-  loudnessRange,
-  compressorThreshold,
-  compressorRatio,
-  preLimiterDb,
-  finalLimiterDb,
-}) {
+function round(value, precision = 10) {
+  return Math.round(value * precision) / precision;
+}
+
+function saveClips() {
+  const temporary = join(root, ".clips.json.mastering");
+  writeFileSync(temporary, `${JSON.stringify(allClips, null, 2)}\n`);
+  renameSync(temporary, clipsFile);
+}
+
+const sourceFor = new Map();
+const missingOriginals = [];
+for (const clip of clips) {
+  const source = sourceForClip(clip);
+  if (!source) missingOriginals.push(clip.id);
+  else sourceFor.set(String(clip.id), source);
+}
+if (missingOriginals.length) {
+  throw new Error(`The original archive is unavailable for ${missingOriginals.length} public clips: ${missingOriginals.slice(0, 12).join(", ")}`);
+}
+
+function sourceProfileIsCurrent(clip, signature) {
+  return clip.sourceProfileVersion === sourceProfileVersion
+    && clip.sourceProfileSignature === signature
+    && Number.isFinite(clip.sourceChannels)
+    && Number.isFinite(clip.sourceFullRms)
+    && Number.isFinite(clip.sourceBassDelta)
+    && Number.isFinite(clip.sourcePresenceDelta)
+    && Number.isFinite(clip.sourceLeftRms)
+    && Number.isFinite(clip.sourceRightRms)
+    && Number.isFinite(clip.sourceChannelImbalance)
+    && Number.isFinite(clip.sourceMonoDelta)
+    && Number.isFinite(clip.sourceIntroRms);
+}
+
+let profileCursor = 0;
+let profiledCount = 0;
+let reusedProfileCount = 0;
+
+async function profileClip(clip) {
+  const source = sourceFor.get(String(clip.id));
+  const signature = sourceSignature(source);
+  if (sourceProfileIsCurrent(clip, signature)) {
+    reusedProfileCount += 1;
+    return;
+  }
+
+  const [profile, introRms] = await Promise.all([
+    analyzeToneAndChannels(source.path),
+    analyzeMeanVolume(source.path, 2),
+  ]);
+  Object.assign(clip, {
+    sourceProfileVersion,
+    sourceProfileSignature: signature,
+    sourceChannels: profile.channels,
+    sourceFullRms: profile.fullRms,
+    sourceBassDelta: profile.bassDelta,
+    sourcePresenceDelta: profile.presenceDelta,
+    sourceLeftRms: profile.leftRms,
+    sourceRightRms: profile.rightRms,
+    sourceChannelImbalance: profile.channelImbalance,
+    sourceMonoDelta: profile.monoDelta,
+    sourceIntroRms: introRms,
+  });
+}
+
+async function profileWorker() {
+  while (profileCursor < clips.length) {
+    const clip = clips[profileCursor++];
+    await profileClip(clip);
+    profiledCount += 1;
+    if (profiledCount % 10 === 0) saveClips();
+    process.stdout.write(`\rProfiled ${profiledCount}/${clips.length} originals`);
+  }
+}
+
+await Promise.all(Array.from({ length: Math.min(4, clips.length) }, () => profileWorker()));
+saveClips();
+process.stdout.write(` (${reusedProfileCount} already current)\n`);
+
+function channelMode(clip) {
+  if (clip.sourceChannels === 1) return "mono-to-dual-mono";
+  if (clip.sourceChannelImbalance <= 20) return "stereo";
+  return clip.sourceLeftRms >= clip.sourceRightRms ? "left-to-dual-mono" : "right-to-dual-mono";
+}
+
+function conditioningFilters(clip) {
+  const filters = [];
+  const mode = channelMode(clip);
+  if (mode === "mono-to-dual-mono") filters.push("pan=stereo|c0=c0|c1=c0");
+  if (mode === "left-to-dual-mono") filters.push("pan=stereo|c0=c0|c1=c0");
+  if (mode === "right-to-dual-mono") filters.push("pan=stereo|c0=c1|c1=c1");
+  filters.push("highpass=f=30:p=2");
+  if (clip.sourceBassDelta > -1) filters.push("bass=f=120:t=q:w=0.7:g=-2.5:p=2");
+  if (clip.sourcePresenceDelta > -10) filters.push("equalizer=f=4000:t=q:w=1:g=-2");
+  return filters;
+}
+
+function dynamicsFilter(clip, settings) {
   return [
-    "highpass=f=30:p=2",
-    `acompressor=threshold=${compressorThreshold}:ratio=${compressorRatio}:attack=18:release=280:knee=4:makeup=1:link=average:detection=rms`,
-    `alimiter=limit=${dbToLinear(preLimiterDb)}:attack=5:release=90:level=false:latency=true`,
-    `loudnorm=I=${loudnessTarget}:LRA=${loudnessRange}:TP=-3:linear=false`,
-    "aresample=48000",
-    `alimiter=limit=${dbToLinear(finalLimiterDb)}:attack=5:release=100:level=false:latency=true`,
+    ...conditioningFilters(clip),
+    `agate=threshold=${dbToLinear(settings.gateThresholdDb)}:ratio=2:range=0.25118864:attack=12:release=350:knee=4:detection=rms:link=average`,
+    `acompressor=threshold=${dbToLinear(settings.compressorThresholdDb)}:ratio=${settings.compressorRatio}:attack=25:release=300:knee=4:makeup=1:link=average:detection=rms`,
   ].join(",");
+}
+
+function masteringFilter(clip, settings) {
+  return [
+    dynamicsFilter(clip, settings),
+    `volume=${settings.gainDb.toFixed(3)}dB`,
+    "aresample=48000",
+    `alimiter=limit=${dbToLinear(settings.finalLimiterDb)}:attack=5:release=100:level=false:latency=true`,
+    `volume=${settings.outputPadDb.toFixed(3)}dB`,
+  ].join(",");
+}
+
+async function stageMetrics(clip, source, settings) {
+  return analyzeAudioSafety(source.path, dynamicsFilter(clip, settings));
 }
 
 async function renderMaster(clip, source, destination, settings) {
@@ -109,8 +214,8 @@ async function renderMaster(clip, source, destination, settings) {
     "-nostdin", "-hide_banner", "-loglevel", "error",
     "-i", source.path,
     "-map", "0:a:0", "-vn",
-    "-af", masteringFilter(settings),
-    "-c:a", "aac", "-b:a", `${settings.bitRateKbps}k`, "-ar", "48000",
+    "-af", masteringFilter(clip, settings),
+    "-c:a", "aac", "-b:a", "96k", "-ar", "48000", "-ac", "2",
     "-movflags", "+faststart",
     "-metadata", `comment=ACERVO ${masteringProfileName} master; source archive preserved`,
     "-y", temporary,
@@ -123,7 +228,9 @@ function metricsAreCurrent(clip) {
     && Number.isFinite(clip.audioLra)
     && Number.isFinite(clip.audioTruePeak)
     && Number.isFinite(clip.audioMaxMomentary)
-    && Number.isFinite(clip.audioMaxShortTerm);
+    && Number.isFinite(clip.audioMaxShortTerm)
+    && Number.isFinite(clip.audioIntroRms)
+    && Number.isFinite(clip.audioChannelImbalance);
 }
 
 function withinTarget(metrics) {
@@ -137,18 +244,16 @@ function withinTarget(metrics) {
 
 let masterCursor = 0;
 let masteredCount = 0;
-let reusedCount = 0;
-
-function saveClips() {
-  const temporary = join(root, ".clips.json.mastering");
-  writeFileSync(temporary, `${JSON.stringify(clips, null, 2)}\n`);
-  renameSync(temporary, clipsFile);
-}
+let reusedMasterCount = 0;
 
 async function masterClip(clip) {
+  const source = sourceFor.get(String(clip.id));
+  const signature = sourceSignature(source);
   const destination = join(audioDir, `${clip.id}.m4a`);
-  const reusableWithoutSource = existsSync(destination)
+  const canReuse = !forceMaster
+    && existsSync(destination)
     && clip.audioProfile === masteringProfile
+    && clip.audioSourceSignature === signature
     && metricsAreCurrent(clip)
     && withinTarget({
       lufs: clip.audioLufs,
@@ -157,60 +262,60 @@ async function masterClip(clip) {
       maxMomentary: clip.audioMaxMomentary,
       maxShortTerm: clip.audioMaxShortTerm,
     });
-  const source = sourceForClip(clip);
-  const signature = source ? sourceSignature(source) : null;
-  const canReuse = reusableWithoutSource
-    && (!source || clip.audioSourceSignature === signature);
-
   if (canReuse) {
-    reusedCount += 1;
+    reusedMasterCount += 1;
     return;
   }
-  if (!source) throw new Error(`No usable audio source for public clip ${clip.id}`);
 
   const settings = {
-    loudnessTarget: -16.2,
-    loudnessRange: 4,
-    compressorThreshold: 0.1,
-    compressorRatio: 4,
-    preLimiterDb: -8,
-    finalLimiterDb: -5,
-    bitRateKbps: 52,
+    gateThresholdDb: Math.min(-38, clip.sourceFullRms - 12),
+    compressorThresholdDb: Math.min(-18, Math.max(-45, clip.sourceFullRms + 12)),
+    compressorRatio: 3,
+    finalLimiterDb: -1,
+    outputPadDb: -1.5,
+    gainDb: 0,
   };
+  let stage = await stageMetrics(clip, source, settings);
+  settings.gainDb = Math.max(-24, Math.min(48, targetLufs - stage.lufs - settings.outputPadDb));
   let metrics;
-  for (let pass = 0; pass < 10; pass += 1) {
+
+  for (let pass = 0; pass < 24; pass += 1) {
     await renderMaster(clip, source, destination, settings);
     metrics = await analyzeAudioSafety(destination);
+    if (process.env.ACERVO_DEBUG) {
+      console.log(`\n${clip.id} pass ${pass + 1}`, settings, metrics);
+    }
     if (withinTarget(metrics)) break;
 
-    if (metrics.lra > lraCeiling && metrics.maxMomentary > -11.5) {
-      settings.loudnessRange = Math.max(3, settings.loudnessRange - 0.5);
-      settings.compressorThreshold = Math.max(0.063, settings.compressorThreshold * 0.8);
-      settings.compressorRatio = Math.min(6, settings.compressorRatio + 1);
-      continue;
-    }
-
     if (metrics.truePeak > truePeakCeiling) {
-      // A few especially bright sources create large inter-sample peaks when
-      // encoded at a very small AAC bitrate. More codec headroom fixes those
-      // without turning the whole musical body down.
-      if (metrics.truePeak > 0.5 && settings.bitRateKbps < 96) settings.bitRateKbps = 96;
-      else settings.finalLimiterDb = Math.max(-10, settings.finalLimiterDb - (metrics.truePeak - truePeakCeiling + 0.3));
+      // AAC can add inter-sample overshoot after a perfectly safe PCM render.
+      // Move gain from after the limiter to before it: programme loudness stays
+      // stable while the limiter absorbs the newly measured codec overshoot.
+      const reduction = metrics.truePeak - truePeakCeiling + 0.3;
+      settings.outputPadDb = Math.max(-12, settings.outputPadDb - reduction);
+      settings.gainDb = Math.min(48, settings.gainDb + reduction);
       continue;
     }
 
-    const safetyReduction = Math.min(
+    const needsMoreDynamics = metrics.maxMomentary > momentaryCeiling
+      || metrics.maxShortTerm > shortTermCeiling
+      || (metrics.lra > lraCeiling && metrics.maxMomentary > -11.5);
+    if (needsMoreDynamics && settings.compressorRatio < 12) {
+      settings.compressorThresholdDb = Math.max(-64, settings.compressorThresholdDb - 2);
+      settings.compressorRatio += 1;
+      stage = await stageMetrics(clip, source, settings);
+      settings.gainDb = Math.max(-24, Math.min(48, targetLufs - stage.lufs - settings.outputPadDb));
+      continue;
+    }
+
+    const momentaryReduction = Math.min(
       0,
       momentaryCeiling - metrics.maxMomentary,
       shortTermCeiling - metrics.maxShortTerm,
     );
-    if (safetyReduction < -0.1) {
-      settings.loudnessTarget = Math.max(-19, settings.loudnessTarget + safetyReduction);
-    } else if (metrics.lufs < hardQuietFloor) {
-      settings.loudnessTarget = Math.min(-10, settings.loudnessTarget + Math.min(2, targetLufs - metrics.lufs));
-      settings.preLimiterDb = Math.max(-14, settings.preLimiterDb - 1.5);
-    } else if (metrics.lufs > hardLoudCeiling) {
-      settings.loudnessTarget = Math.max(-19, settings.loudnessTarget + targetLufs - metrics.lufs);
+    if (momentaryReduction < -0.1) settings.gainDb += momentaryReduction;
+    else if (metrics.lufs < hardQuietFloor || metrics.lufs > hardLoudCeiling) {
+      settings.gainDb += targetLufs - metrics.lufs;
     }
   }
 
@@ -218,12 +323,36 @@ async function masterClip(clip) {
     throw new Error(`Master ${clip.id} missed the safety corridor: ${JSON.stringify(metrics)}`);
   }
 
+  const [outputProfile, introRms] = await Promise.all([
+    analyzeToneAndChannels(destination),
+    analyzeMeanVolume(destination, 2),
+  ]);
+  const mode = channelMode(clip);
+  if (mode !== "stereo" && outputProfile.channelImbalance > 1) {
+    throw new Error(`Dual-mono repair failed for clip ${clip.id}`);
+  }
+  if (Number.isFinite(clip.sourceIntroRms)
+    && Number.isFinite(introRms)
+    && introRms > clip.sourceIntroRms + settings.gainDb + 1.5) {
+    throw new Error(`Opening noise was raised unexpectedly for clip ${clip.id}`);
+  }
+
   Object.assign(clip, {
     audioProfile: masteringProfile,
     audioProfileName: masteringProfileName,
-    audioBitrateKbps: settings.bitRateKbps,
+    audioBitrateKbps: 96,
     audioSourceSignature: signature,
     audioRev: Math.floor(statSync(destination).mtimeMs),
+    audioChannelMode: mode,
+    audioGateThresholdDb: round(settings.gateThresholdDb),
+    audioCompressorThresholdDb: round(settings.compressorThresholdDb),
+    audioBassCorrectionDb: clip.sourceBassDelta > -1 ? -2.5 : 0,
+    audioPresenceCorrectionDb: clip.sourcePresenceDelta > -10 ? -2 : 0,
+    audioMasterGainDb: round(settings.gainDb),
+    audioOutputPadDb: round(settings.outputPadDb),
+    audioIntroRms: introRms,
+    audioChannelImbalance: outputProfile.channelImbalance,
+    audioMonoDelta: outputProfile.monoDelta,
     bakedGainDb: 0,
     audioLufs: metrics.lufs,
     audioLra: metrics.lra,
@@ -239,37 +368,21 @@ async function masterWorker() {
     await masterClip(clip);
     masteredCount += 1;
     if (masteredCount % 5 === 0) saveClips();
-    process.stdout.write(`\rMastered ${masteredCount}/${clips.length} soundtracks`);
+    process.stdout.write(`\rMastered ${masteredCount}/${clips.length} original soundtracks`);
   }
 }
 
 await Promise.all(Array.from({ length: Math.min(4, clips.length) }, () => masterWorker()));
-process.stdout.write(` (${reusedCount} already current)\n`);
+process.stdout.write(` (${reusedMasterCount} already current)\n`);
 
-// Keep only the mastered soundtracks for the clips that remain public.
 for (const name of readdirSync(audioDir)) {
   const id = name.endsWith(".m4a") ? name.slice(0, -4) : "";
-  if (/^\d+$/.test(id) && !selected.has(id)) rmSync(join(audioDir, name));
+  if (!requestedIds.size && /^\d+$/.test(id) && !selected.has(id)) rmSync(join(audioDir, name));
 }
 
-// The visual MP4 and mastered M4A are played in sync. Once every master exists,
-// remove the redundant old soundtrack from the visual file so the GitHub Pages
-// artifact remains below its size limit.
-let strippedCount = 0;
 for (const clip of clips) {
   const media = join(mediaDir, `${clip.id}.mp4`);
   if (!existsSync(join(audioDir, `${clip.id}.m4a`))) throw new Error(`Missing master for clip ${clip.id}`);
-  if (hasAudio(media)) {
-    const temporary = join(mediaDir, `.${clip.id}.silent.mp4`);
-    execFileSync("ffmpeg", [
-      "-nostdin", "-hide_banner", "-loglevel", "error",
-      "-i", media,
-      "-map", "0:v:0", "-c:v", "copy", "-an",
-      "-movflags", "+faststart", "-y", temporary,
-    ], { stdio: "inherit" });
-    renameSync(temporary, media);
-    strippedCount += 1;
-  }
   clip.rev = Math.floor(statSync(media).mtimeMs);
   clip.lufs = clip.audioLufs;
   clip.lra = clip.audioLra;
@@ -282,4 +395,4 @@ for (const clip of clips) {
 }
 
 saveClips();
-console.log(`Prepared ${clips.length} mastered tracks and stripped ${strippedCount} redundant video soundtracks.`);
+console.log(`Prepared ${clips.length} noise-aware original-source masters in ${audioDir}.`);

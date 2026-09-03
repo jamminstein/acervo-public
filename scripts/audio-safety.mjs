@@ -6,14 +6,14 @@ function lastNumber(text, expression) {
   return [...text.matchAll(expression)].map((match) => Number(match[1])).filter(Number.isFinite).at(-1);
 }
 
-export async function analyzeAudioSafety(mediaPath) {
+export async function analyzeAudioSafety(mediaPath, preFilter = "") {
   let stderr;
   try {
     ({ stderr } = await run("ffmpeg", [
       "-nostdin", "-hide_banner", "-nostats",
       "-i", mediaPath,
       "-map", "0:a:0", "-vn",
-      "-af", "ebur128=peak=true",
+      "-af", `${preFilter ? `${preFilter},` : ""}ebur128=peak=true`,
       "-f", "null", "-",
     ], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }));
   } catch (error) {

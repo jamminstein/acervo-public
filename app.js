@@ -7,6 +7,7 @@ const timelineShell = document.querySelector("#timeline-shell");
 const timeline = document.querySelector("#timeline");
 const waveformCanvas = document.querySelector("#waveform");
 const waveformContext = waveformCanvas.getContext("2d");
+const audioBase = "https://jamminstein.github.io/acervo-public-audio";
 
 // The soundtrack has a permanent HTML audio element so iOS and car systems keep
 // recognizing it after Safari leaves the foreground. Only the selected tile
@@ -24,6 +25,7 @@ let activeTile = null;
 let shuffleQueue = [];
 let playHistory = [];
 let playlistRunning = false;
+let prefetchedAudioUrl = "";
 const waveformCache = new WeakMap();
 
 function gainFromDecibels(decibels) {
@@ -37,6 +39,16 @@ function shuffle(values) {
     [result[index], result[swapWith]] = [result[swapWith], result[index]];
   }
   return result;
+}
+
+function prefetchNextAudio() {
+  if (navigator.connection?.saveData) return;
+  const nextUrl = shuffleQueue[0]?.dataset.audioSrc;
+  if (!nextUrl || nextUrl === prefetchedAudioUrl) return;
+  prefetchedAudioUrl = nextUrl;
+  void fetch(nextUrl, { mode: "cors", cache: "force-cache" }).catch(() => {
+    if (prefetchedAudioUrl === nextUrl) prefetchedAudioUrl = "";
+  });
 }
 
 function tilePreview(tile) {
@@ -243,6 +255,7 @@ async function playTile(tile, { rememberCurrent = true } = {}) {
   try {
     configureTileGain(tile);
     await audioPlayer.play();
+    prefetchNextAudio();
     const compactScreen = window.matchMedia("(max-width: 560px)").matches;
     if (!document.hidden) {
       tile.scrollIntoView({
@@ -299,7 +312,7 @@ async function toggle(tile) {
   await playTile(tile);
 }
 
-const response = await fetch("./clips.json?v=20260903-2");
+const response = await fetch("./clips.json?v=20260903-3");
 const clips = await response.json();
 const randomizedClips = shuffle(clips);
 
@@ -311,7 +324,7 @@ for (const [index, clip] of randomizedClips.entries()) {
   tile.ariaLabel = `Play or stop clip ${index + 1}`;
   tile.dataset.poster = poster;
   tile.dataset.src = `./media/${clip.id}.mp4?v=${clip.rev}`;
-  tile.dataset.audioSrc = clip.audioRev ? `./audio/${clip.id}.m4a?v=${clip.audioRev}` : "";
+  tile.dataset.audioSrc = clip.audioRev ? `${audioBase}/${clip.id}.m4a?v=${clip.audioRev}` : "";
   tile.dataset.gainDb = String(clip.audioRev ? 0 : (clip.safetyGainDb ?? clip.gainDb ?? 0));
   tile.dataset.waveform = clip.waveform || "";
 
