@@ -274,7 +274,7 @@ async function playTile(tile, { rememberCurrent = true } = {}) {
     if (activeTile && rememberCurrent) playHistory.push(activeTile);
     setActiveTile(tile);
     audioPlayer.pause();
-    audioPlayer.src = tile.dataset.src;
+    audioPlayer.src = tile.dataset.audioSrc || tile.dataset.src;
     audioPlayer.load();
 
     const preview = tilePreview(tile);
@@ -346,7 +346,7 @@ async function toggle(tile) {
   await playTile(tile);
 }
 
-const response = await fetch("./clips.json?v=20260831-4");
+const response = await fetch("./clips.json?v=20260903-1");
 const clips = await response.json();
 const randomizedClips = shuffle(clips);
 
@@ -358,7 +358,8 @@ for (const [index, clip] of randomizedClips.entries()) {
   tile.ariaLabel = `Play or stop clip ${index + 1}`;
   tile.dataset.poster = poster;
   tile.dataset.src = `./media/${clip.id}.mp4?v=${clip.rev}`;
-  tile.dataset.gainDb = String(clip.gainDb || 0);
+  tile.dataset.audioSrc = clip.audioRev ? `./audio/${clip.id}.m4a?v=${clip.audioRev}` : "";
+  tile.dataset.gainDb = String(clip.audioRev ? 0 : (clip.safetyGainDb ?? clip.gainDb ?? 0));
   tile.dataset.waveform = clip.waveform || "";
 
   const image = document.createElement("img");

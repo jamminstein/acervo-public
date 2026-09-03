@@ -14,7 +14,8 @@ assert.ok(clips.length > 0, "the page needs at least one public clip");
 assert.match(html, /id="clips"/);
 assert.match(html, /app\.js\?v=[a-z0-9-]+/, "the player needs a cache-busting version");
 assert.match(html, /viewport-fit=cover/);
-assert.doesNotMatch(html, /<h[1-6]|<p\b|<nav\b|<header\b/i, "the page must contain no visible text interface");
+assert.doesNotMatch(html, /<h[1-6]|<p\b|<header\b/i, "the archive itself must remain visually minimal");
+assert.match(html, /class="tiago-portal-nav"/, "the shared site navigation must be preserved");
 assert.match(styles, /safe-area-inset-top/);
 assert.match(styles, /touch-action: manipulation/);
 assert.match(styles, /100dvh/);
@@ -29,6 +30,8 @@ assert.match(app, /createDynamicsCompressor/);
 assert.match(app, /createMediaElementSource\(audioPlayer\)/);
 assert.match(app, /createGain\(\)/);
 assert.match(app, /gainFromDecibels/);
+assert.match(app, /tile\.dataset\.audioSrc \|\| tile\.dataset\.src/);
+assert.match(app, /clip\.safetyGainDb/);
 assert.match(app, /limiter\.threshold\.value = -3/);
 assert.match(app, /shuffleQueue/);
 assert.match(app, /randomizedClips = shuffle\(clips\)/);
@@ -52,7 +55,19 @@ for (const clip of clips) {
   assert.ok(existsSync(poster) && statSync(poster).size > 0, `missing poster ${clip.id}`);
   assert.ok(statSync(video).size < 100 * 1024 * 1024, `video ${clip.id} exceeds GitHub's file limit`);
   assert.ok(Number.isFinite(clip.gainDb) && Math.abs(clip.gainDb) <= 6, `invalid playback gain for ${clip.id}`);
+  assert.equal(clip.safetyProfile, 2, `outdated audio safety analysis for ${clip.id}`);
+  assert.ok(Number.isFinite(clip.maxMomentary) && Number.isFinite(clip.maxShortTerm), `missing perceived-loudness analysis for ${clip.id}`);
+  assert.ok(Number.isFinite(clip.safetyGainDb) && clip.safetyGainDb <= 0, `invalid safety gain for ${clip.id}`);
   assert.equal(Buffer.from(clip.waveform || "", "base64").length, 96, `invalid waveform for ${clip.id}`);
+
+  if (clip.safetyGainDb <= -0.5) {
+    const audio = join(root, "audio", `${clip.id}.m4a`);
+    assert.ok(existsSync(audio) && statSync(audio).size > 0, `missing safety audio for ${clip.id}`);
+    assert.equal(clip.audioProfile, 4, `outdated safety audio for ${clip.id}`);
+    assert.ok(clip.audioTruePeak <= -0.5, `unsafe true peak for ${clip.id}`);
+    assert.ok(clip.audioMaxMomentary <= -9, `unsafe momentary loudness for ${clip.id}`);
+    assert.ok(clip.audioMaxShortTerm <= -10.5, `unsafe short-term loudness for ${clip.id}`);
+  }
 }
 
 console.log(`Verified ${clips.length} public clips.`);

@@ -128,13 +128,7 @@ async function measureWebAudio(clip) {
   if (previous?.rev === current.rev
     && Object.hasOwn(previous, "lufs")
     && Number.isFinite(Number(previous.gainDb))) {
-    return {
-      ...current,
-      lufs: previous.lufs,
-      truePeak: previous.truePeak,
-      gainDb: previous.gainDb,
-      waveform,
-    };
+    return { ...previous, ...current, waveform };
   }
 
   let stderr = "";
@@ -185,3 +179,5 @@ async function measureWorker() {
 await Promise.all(Array.from({ length: Math.min(12, clips.length) }, () => measureWorker()));
 writeFileSync(clipsFile, `${JSON.stringify(clips.map(({ id }) => measured.get(id)), null, 2)}\n`);
 process.stdout.write("\n");
+execFileSync(process.execPath, [join(root, "scripts", "analyze-audio-safety.mjs")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(root, "scripts", "prepare-safe-audio.mjs")], { stdio: "inherit" });
