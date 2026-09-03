@@ -346,7 +346,7 @@ async function toggle(tile) {
   await playTile(tile);
 }
 
-const response = await fetch("./clips.json?v=20260903-1");
+const response = await fetch("./clips.json?v=20260903-2");
 const clips = await response.json();
 const randomizedClips = shuffle(clips);
 

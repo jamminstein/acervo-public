@@ -12,16 +12,35 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { analyzeAudioSafety, calculateSafetyGainDb } from "./audio-safety.mjs";
+import {
+  analyzeAudioSafety,
+  calculateSafetyGainDb,
+  loudnessTarget,
+  momentaryCeiling,
+  shortTermCeiling,
+} from "./audio-safety.mjs";
 
 const run = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const clipsFile = join(root, "clips.json");
 const audioDir = join(root, "audio");
-const audioProfile = 4;
+const audioProfile = 6;
 const bakedThresholdDb = -0.5;
 const clips = JSON.parse(readFileSync(clipsFile, "utf8"));
-const selected = new Set(clips.filter((clip) => clip.safetyGainDb <= bakedThresholdDb).map((clip) => String(clip.id)));
+const selected = new Set(
+  clips
+    .filter((clip) => clip.safetyGainDb <= bakedThresholdDb || clip.lufs < -18)
+    .map((clip) => String(clip.id)),
+);
+
+function recommendedBakedGainDb(clip) {
+  const gainDb = Math.min(
+    loudnessTarget - clip.lufs,
+    momentaryCeiling - clip.maxMomentary,
+    shortTermCeiling - clip.maxShortTerm,
+  );
+  return Math.round(Math.max(-8, Math.min(6, gainDb)) * 100) / 100;
+}
 
 mkdirSync(audioDir, { recursive: true });
 for (const name of readdirSync(audioDir)) {
@@ -32,13 +51,13 @@ for (const name of readdirSync(audioDir)) {
 let cursor = 0;
 let finished = 0;
 
-async function renderAudio(clip, destination, gainDb) {
+async function renderAudio(clip, destination, gainDb, limiterLevel) {
   const temporary = join(audioDir, `.${clip.id}.tmp.m4a`);
   await run("ffmpeg", [
     "-nostdin", "-hide_banner", "-loglevel", "error",
     "-i", join(root, "media", `${clip.id}.mp4`),
     "-map", "0:a:0", "-vn",
-    "-af", `volume=${gainDb}dB,alimiter=limit=0.501187:attack=5:release=80:level=false:latency=true`,
+    "-af", `volume=${gainDb}dB,alimiter=limit=${limiterLevel}:attack=5:release=80:level=false:latency=true`,
     "-c:a", "aac", "-b:a", "64k", "-ar", "48000",
     "-movflags", "+faststart",
     "-metadata", "comment=ACERVO safety-normalized web audio; source preserved",
@@ -56,14 +75,32 @@ async function prepareClip(clip) {
     && Number.isFinite(clip.bakedGainDb);
 
   if (!canReuse) {
-    let bakedGainDb = clip.safetyGainDb;
-    await renderAudio(clip, destination, bakedGainDb);
-    let metrics = await analyzeAudioSafety(destination);
-    const residualGainDb = calculateSafetyGainDb(metrics);
-    if (residualGainDb <= bakedThresholdDb) {
-      bakedGainDb = Math.round((bakedGainDb + residualGainDb) * 100) / 100;
-      await renderAudio(clip, destination, bakedGainDb);
+    let bakedGainDb = recommendedBakedGainDb(clip);
+    let limiterLevel = 0.501187;
+    let metrics;
+    for (let pass = 0; pass < 4; pass += 1) {
+      await renderAudio(clip, destination, bakedGainDb, limiterLevel);
       metrics = await analyzeAudioSafety(destination);
+      const safetyCorrectionDb = calculateSafetyGainDb(metrics);
+      if (safetyCorrectionDb < -0.1) {
+        bakedGainDb = Math.round((bakedGainDb + safetyCorrectionDb) * 100) / 100;
+        limiterLevel = 0.316228;
+        continue;
+      }
+
+      if (metrics.lufs < -18) {
+        const quietCorrectionDb = Math.min(
+          -17 - metrics.lufs,
+          momentaryCeiling - metrics.maxMomentary,
+          shortTermCeiling - metrics.maxShortTerm,
+          3,
+        );
+        if (quietCorrectionDb > 0.1) {
+          bakedGainDb = Math.round((bakedGainDb + quietCorrectionDb) * 100) / 100;
+          continue;
+        }
+      }
+      break;
     }
 
     Object.assign(clip, {

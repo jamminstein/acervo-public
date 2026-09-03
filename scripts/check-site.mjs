@@ -60,10 +60,10 @@ for (const clip of clips) {
   assert.ok(Number.isFinite(clip.safetyGainDb) && clip.safetyGainDb <= 0, `invalid safety gain for ${clip.id}`);
   assert.equal(Buffer.from(clip.waveform || "", "base64").length, 96, `invalid waveform for ${clip.id}`);
 
-  if (clip.safetyGainDb <= -0.5) {
+  if (clip.safetyGainDb <= -0.5 || clip.lufs < -18) {
     const audio = join(root, "audio", `${clip.id}.m4a`);
     assert.ok(existsSync(audio) && statSync(audio).size > 0, `missing safety audio for ${clip.id}`);
-    assert.equal(clip.audioProfile, 4, `outdated safety audio for ${clip.id}`);
+    assert.equal(clip.audioProfile, 6, `outdated safety audio for ${clip.id}`);
     assert.ok(clip.audioTruePeak <= -0.5, `unsafe true peak for ${clip.id}`);
     assert.ok(clip.audioMaxMomentary <= -9, `unsafe momentary loudness for ${clip.id}`);
     assert.ok(clip.audioMaxShortTerm <= -10.5, `unsafe short-term loudness for ${clip.id}`);
