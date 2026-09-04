@@ -35,15 +35,17 @@ const database = join(homedir(), "Library", "Application Support", "acervo", "ac
 // gain avoids the local noise-floor lift caused by dynamic normalization, and
 // the native media path remains dependable when Safari is backgrounded or used
 // through CarPlay.
-export const masteringProfile = 8;
-export const masteringProfileName = "car-consistent-v2-noise-aware-originals";
+export const masteringProfile = 9;
+export const masteringProfileName = "car-consistent-v3-tighter-dynamics";
+const compatiblePreviousProfile = 8;
+const compatiblePreviousProfileName = "car-consistent-v2-noise-aware-originals";
 const targetLufs = -16.2;
-const hardQuietFloor = -17;
+const hardQuietFloor = -17.5;
 const hardLoudCeiling = -15;
 const truePeakCeiling = -1;
-const momentaryCeiling = -9.5;
-const shortTermCeiling = -11;
-const lraCeiling = 10;
+const momentaryCeiling = -11.5;
+const shortTermCeiling = -13;
+const lraCeiling = 8;
 const sourceProfileVersion = 1;
 
 const allClips = JSON.parse(readFileSync(clipsFile, "utf8"));
@@ -258,7 +260,7 @@ function metricsAreCurrent(clip) {
 function withinTarget(metrics) {
   return metrics.lufs >= hardQuietFloor
     && metrics.lufs <= hardLoudCeiling
-    && (metrics.lra <= lraCeiling || metrics.maxMomentary <= -11.5)
+    && (metrics.lra <= lraCeiling || metrics.maxMomentary <= -13)
     && metrics.truePeak <= truePeakCeiling
     && metrics.maxMomentary <= momentaryCeiling
     && metrics.maxShortTerm <= shortTermCeiling;
@@ -272,9 +274,12 @@ async function masterClip(clip) {
   const source = sourceFor.get(String(clip.id));
   const signature = sourceSignature(source);
   const destination = audioPath(clip);
+  const hasCompatibleProfile = clip.audioProfile === masteringProfile
+    || (clip.audioProfile === compatiblePreviousProfile
+      && clip.audioProfileName === compatiblePreviousProfileName);
   const canReuse = !forceMaster
     && existsSync(destination)
-    && clip.audioProfile === masteringProfile
+    && hasCompatibleProfile
     && clip.audioSourceSignature === signature
     && metricsAreCurrent(clip)
     && withinTarget({
@@ -285,6 +290,8 @@ async function masterClip(clip) {
       maxShortTerm: clip.audioMaxShortTerm,
     });
   if (canReuse) {
+    clip.audioProfile = masteringProfile;
+    clip.audioProfileName = masteringProfileName;
     reusedMasterCount += 1;
     return;
   }
@@ -319,22 +326,36 @@ async function masterClip(clip) {
       continue;
     }
 
+    const effectiveMomentaryCeiling = metrics.lra > lraCeiling
+      ? Math.min(momentaryCeiling, -13)
+      : momentaryCeiling;
+    const momentaryReduction = Math.min(
+      0,
+      effectiveMomentaryCeiling - metrics.maxMomentary,
+      shortTermCeiling - metrics.maxShortTerm,
+    );
     const needsMoreDynamics = metrics.maxMomentary > momentaryCeiling
       || metrics.maxShortTerm > shortTermCeiling
-      || (metrics.lra > lraCeiling && metrics.maxMomentary > -11.5);
+      || (metrics.lra > lraCeiling && metrics.maxMomentary > -13);
+
+    // Prefer a small static trim whenever it can solve the transient excess
+    // without making the programme genuinely quiet. This preserves the noise
+    // floor and avoids over-compressing hiss-heavy lo-fi recordings.
+    if (momentaryReduction < -0.1
+      && metrics.lufs + momentaryReduction >= hardQuietFloor) {
+      settings.gainDb += momentaryReduction;
+      continue;
+    }
+
     if (needsMoreDynamics && settings.compressorRatio < 12) {
-      settings.compressorThresholdDb = Math.max(-64, settings.compressorThresholdDb - 2);
+      // FFmpeg's compressor threshold bottoms out just below -60 dB.
+      settings.compressorThresholdDb = Math.max(-60, settings.compressorThresholdDb - 2);
       settings.compressorRatio += 1;
       stage = await stageMetrics(clip, source, settings);
       settings.gainDb = Math.max(-24, Math.min(48, targetLufs - stage.lufs - settings.outputPadDb));
       continue;
     }
 
-    const momentaryReduction = Math.min(
-      0,
-      momentaryCeiling - metrics.maxMomentary,
-      shortTermCeiling - metrics.maxShortTerm,
-    );
     if (momentaryReduction < -0.1) settings.gainDb += momentaryReduction;
     else if (metrics.lufs < hardQuietFloor || metrics.lufs > hardLoudCeiling) {
       settings.gainDb += targetLufs - metrics.lufs;

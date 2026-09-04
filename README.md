@@ -5,8 +5,9 @@ A text-free grid containing only the videos marked public in the local ACERVO li
 Click a clip to play or stop it. Starting another clip stops the previous one.
 Every published clip uses a non-destructive, offline car-consistent audio master
 made from its original archive file. A soft noise-floor expander, fixed programme
-gain, compression, tonal outlier correction, channel repair, and true-peak limiter
-are baked into 96 kbps AAC without modifying the source archive.
+gain, compression, tighter momentary and short-term loudness control, tonal outlier
+correction, channel repair, and a true-peak limiter are baked into 96 kbps AAC
+without modifying the source archive.
 
 The mastered soundtracks are published separately from the visual grid across
 `jamminstein/acervo-public-audio` and `jamminstein/acervo-public-audio-2` so

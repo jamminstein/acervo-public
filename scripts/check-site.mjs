@@ -36,13 +36,18 @@ assert.match(app, /gainFromDecibels/);
 assert.match(app, /tile\.dataset\.audioSrc \|\| tile\.dataset\.src/);
 assert.match(app, /https:\/\/jamminstein\.github\.io\/acervo-public-audio/);
 assert.match(app, /https:\/\/jamminstein\.github\.io\/acervo-public-audio-2/);
-assert.match(app, /function prefetchNextAudio/);
-assert.match(app, /cache: "force-cache"/);
+assert.doesNotMatch(app, /function prefetchNextAudio/, "mobile playback must not compete with full-file prefetches");
 assert.match(app, /clip\.safetyGainDb/);
 assert.match(app, /shuffleQueue/);
 assert.match(app, /randomizedClips = shuffle\(clips\)/);
 assert.match(app, /playNext/);
 assert.match(app, /audioPlayer\.addEventListener\("ended"/);
+assert.match(app, /playbackRequestId/);
+assert.match(app, /nextTransitionActive/);
+assert.match(app, /manualNextAllowedAt/);
+assert.match(app, /audioPlayer\.currentSrc !== activeAudioUrl/);
+assert.match(app, /tile\.dataset\.clipId/);
+assert.doesNotMatch(app, /playNext\(failedTile\)/, "failed or interrupted play attempts must not create skip cascades");
 assert.doesNotMatch(app, /document\.hidden && activeTile/, "backgrounding must not stop the soundtrack");
 assert.match(html, /id="transport"/);
 assert.doesNotMatch(html, /playlist-indicator|Shuffled continuous playlist/, "shuffle is implicit, not a control");
@@ -74,11 +79,11 @@ for (const clip of clips) {
   assert.ok(statSync(audio).size < 100 * 1024 * 1024, `audio ${clip.id} exceeds GitHub's file limit`);
   assert.equal(clip.gainDb, 0, `clip ${clip.id} must not need live gain correction`);
   assert.equal(clip.safetyGainDb, 0, `clip ${clip.id} must not need live safety correction`);
-  assert.equal(clip.safetyProfile, 8, `outdated audio safety analysis for ${clip.id}`);
+  assert.equal(clip.safetyProfile, 9, `outdated audio safety analysis for ${clip.id}`);
   assert.ok(Number.isFinite(clip.maxMomentary) && Number.isFinite(clip.maxShortTerm), `missing perceived-loudness analysis for ${clip.id}`);
   assert.equal(Buffer.from(clip.waveform || "", "base64").length, 96, `invalid waveform for ${clip.id}`);
-  assert.equal(clip.audioProfile, 8, `outdated mastered audio for ${clip.id}`);
-  assert.equal(clip.audioProfileName, "car-consistent-v2-noise-aware-originals", `wrong mastering profile for ${clip.id}`);
+  assert.equal(clip.audioProfile, 9, `outdated mastered audio for ${clip.id}`);
+  assert.equal(clip.audioProfileName, "car-consistent-v3-tighter-dynamics", `wrong mastering profile for ${clip.id}`);
   assert.equal(clip.audioBitrateKbps, 96, `wrong AAC quality for ${clip.id}`);
   assert.match(clip.audioSourceSignature, /^archive:/, `clip ${clip.id} was not mastered from its original`);
   assert.equal(clip.sourceProfileVersion, 1, `missing source profile for ${clip.id}`);
@@ -90,11 +95,11 @@ for (const clip of clips) {
   assert.ok(clip.audioOutputPadDb <= -1.5, `missing codec peak safety margin for ${clip.id}`);
   assert.ok(clip.audioIntroRms <= clip.sourceIntroRms + clip.audioMasterGainDb + 1.5, `opening noise was raised unexpectedly for ${clip.id}`);
   assert.ok(clip.audioChannelMode === "stereo" || clip.audioChannelImbalance <= 1, `channel repair failed for ${clip.id}`);
-  assert.ok(clip.audioLufs >= -17 && clip.audioLufs <= -15, `uneven integrated loudness for ${clip.id}`);
-  assert.ok(clip.audioLra <= 10 || clip.audioMaxMomentary <= -11.5, `uncontrolled loudness range for ${clip.id}`);
+  assert.ok(clip.audioLufs >= -17.5 && clip.audioLufs <= -15, `uneven integrated loudness for ${clip.id}`);
+  assert.ok(clip.audioLra <= 8 || clip.audioMaxMomentary <= -13, `uncontrolled loudness range for ${clip.id}`);
   assert.ok(clip.audioTruePeak <= -1, `unsafe true peak for ${clip.id}`);
-  assert.ok(clip.audioMaxMomentary <= -9.5, `unsafe momentary loudness for ${clip.id}`);
-  assert.ok(clip.audioMaxShortTerm <= -11, `unsafe short-term loudness for ${clip.id}`);
+  assert.ok(clip.audioMaxMomentary <= -11.5, `unsafe momentary loudness for ${clip.id}`);
+  assert.ok(clip.audioMaxShortTerm <= -13, `unsafe short-term loudness for ${clip.id}`);
 
   const streams = JSON.parse(execFileSync("ffprobe", [
     "-v", "error", "-show_entries", "stream=codec_type", "-of", "json", video,

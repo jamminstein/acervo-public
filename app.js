@@ -28,7 +28,10 @@ let activeTile = null;
 let shuffleQueue = [];
 let playHistory = [];
 let playlistRunning = false;
-let prefetchedAudioUrl = "";
+let playbackRequestId = 0;
+let activeAudioUrl = "";
+let nextTransitionActive = false;
+let manualNextAllowedAt = 0;
 const waveformCache = new WeakMap();
 
 function gainFromDecibels(decibels) {
@@ -42,16 +45,6 @@ function shuffle(values) {
     [result[index], result[swapWith]] = [result[swapWith], result[index]];
   }
   return result;
-}
-
-function prefetchNextAudio() {
-  if (navigator.connection?.saveData) return;
-  const nextUrl = shuffleQueue[0]?.dataset.audioSrc;
-  if (!nextUrl || nextUrl === prefetchedAudioUrl) return;
-  prefetchedAudioUrl = nextUrl;
-  void fetch(nextUrl, { mode: "cors", cache: "force-cache" }).catch(() => {
-    if (prefetchedAudioUrl === nextUrl) prefetchedAudioUrl = "";
-  });
 }
 
 function tilePreview(tile) {
@@ -112,8 +105,8 @@ function updateMediaMetadata(tile) {
   if (!("mediaSession" in navigator) || !("MediaMetadata" in window) || !tile) return;
   const number = tiles.indexOf(tile) + 1;
   navigator.mediaSession.metadata = new MediaMetadata({
-    title: "ACERVO",
-    artist: `Clip ${number} of ${tiles.length}`,
+    title: `ACERVO ${tile.dataset.clipId}`,
+    artist: `Shuffle position ${number} of ${tiles.length}`,
     album: "Public collection",
     artwork: [
       {
@@ -211,8 +204,10 @@ function updateTransport() {
 }
 
 function stopPlayback({ hideTransport = true } = {}) {
+  playbackRequestId += 1;
   audioPlayer.pause();
   audioPlayer.currentTime = 0;
+  activeAudioUrl = "";
   setActiveTile(null);
   if (hideTransport) {
     transport.hidden = true;
@@ -238,12 +233,15 @@ function configureTileGain(tile) {
 
 async function playTile(tile, { rememberCurrent = true } = {}) {
   if (activeTile === tile && !audioPlayer.paused) return;
+  const requestId = ++playbackRequestId;
 
   if (activeTile !== tile) {
     if (activeTile && rememberCurrent) playHistory.push(activeTile);
     setActiveTile(tile);
     audioPlayer.pause();
-    audioPlayer.src = tile.dataset.audioSrc || tile.dataset.src;
+    const soundtrack = tile.dataset.audioSrc || tile.dataset.src;
+    activeAudioUrl = new URL(soundtrack, window.location.href).href;
+    audioPlayer.src = soundtrack;
     audioPlayer.load();
 
     const preview = tilePreview(tile);
@@ -258,7 +256,7 @@ async function playTile(tile, { rememberCurrent = true } = {}) {
   try {
     configureTileGain(tile);
     await audioPlayer.play();
-    prefetchNextAudio();
+    if (requestId !== playbackRequestId || activeTile !== tile) return;
     const compactScreen = window.matchMedia("(max-width: 560px)").matches;
     if (!document.hidden) {
       tile.scrollIntoView({
@@ -266,22 +264,33 @@ async function playTile(tile, { rememberCurrent = true } = {}) {
         block: "center",
       });
     }
-  } catch {
-    const failedTile = activeTile;
-    setActiveTile(null);
-    if (playlistRunning) void playNext(failedTile);
+  } catch (error) {
+    // A new source intentionally aborts the previous play() promise. Treating
+    // that AbortError as a failed clip caused a self-perpetuating skip loop.
+    if (requestId !== playbackRequestId || activeTile !== tile || error?.name === "AbortError") return;
+    stopPreview(tile);
+    setMediaPlaybackState("paused");
+    updateTransport();
   }
 }
 
-async function playNext(previousTile = null) {
+async function playNext(previousTile = null, { manual = false } = {}) {
   if (!playlistRunning || !tiles.length) return;
+  const now = performance.now();
+  if (nextTransitionActive || (manual && now < manualNextAllowedAt)) return;
+  if (manual) manualNextAllowedAt = now + 800;
+  nextTransitionActive = true;
 
-  if (!shuffleQueue.length) {
-    shuffleQueue = shuffle(tiles.filter((tile) => tile !== previousTile));
+  try {
+    if (!shuffleQueue.length) {
+      shuffleQueue = shuffle(tiles.filter((tile) => tile !== previousTile));
+    }
+
+    const nextTile = shuffleQueue.shift();
+    if (nextTile) await playTile(nextTile, { rememberCurrent: true });
+  } finally {
+    nextTransitionActive = false;
   }
-
-  const nextTile = shuffleQueue.shift();
-  if (nextTile) await playTile(nextTile, { rememberCurrent: true });
 }
 
 async function playPrevious() {
@@ -315,7 +324,7 @@ async function toggle(tile) {
   await playTile(tile);
 }
 
-const response = await fetch("./clips.json?v=20260903-4");
+const response = await fetch("./clips.json?v=20260904-1");
 const clips = await response.json();
 const randomizedClips = shuffle(clips);
 
@@ -325,6 +334,7 @@ for (const [index, clip] of randomizedClips.entries()) {
   tile.className = "video-tile";
   tile.type = "button";
   tile.ariaLabel = `Play or stop clip ${index + 1}`;
+  tile.dataset.clipId = String(clip.id);
   tile.dataset.poster = poster;
   tile.dataset.src = `./media/${clip.id}.mp4?v=${clip.rev}`;
   const audioBase = audioBases[clip.audioShard || 1];
@@ -390,6 +400,7 @@ audioPlayer.addEventListener("timeupdate", () => {
 
 audioPlayer.addEventListener("ended", () => {
   const finishedTile = activeTile;
+  if (!finishedTile || !activeAudioUrl || audioPlayer.currentSrc !== activeAudioUrl) return;
   if (finishedTile) playHistory.push(finishedTile);
   setActiveTile(null);
   if (playlistRunning) void playNext(finishedTile);
@@ -414,7 +425,7 @@ transportToggle.addEventListener("click", () => {
 
 transportNext.addEventListener("click", () => {
   playlistRunning = true;
-  void playNext(activeTile);
+  void playNext(activeTile, { manual: true });
 });
 
 timeline.addEventListener("input", () => {
@@ -441,7 +452,7 @@ if ("mediaSession" in navigator) {
     },
     nexttrack: () => {
       playlistRunning = true;
-      void playNext(activeTile);
+      void playNext(activeTile, { manual: true });
     },
     previoustrack: () => void playPrevious(),
     seekbackward: (details) => {
