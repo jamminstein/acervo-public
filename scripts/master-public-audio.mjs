@@ -20,7 +20,15 @@ const run = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const clipsFile = join(root, "clips.json");
 const mediaDir = join(root, "media");
-const audioDir = resolve(process.env.ACERVO_AUDIO_DIR || join(root, "..", "acervo-public-audio"));
+const explicitAudioDir = process.env.ACERVO_AUDIO_DIR
+  ? resolve(process.env.ACERVO_AUDIO_DIR)
+  : null;
+const audioDirs = explicitAudioDir
+  ? [explicitAudioDir]
+  : [
+      resolve(root, "..", "acervo-public-audio"),
+      resolve(root, "..", "acervo-public-audio-2"),
+    ];
 const database = join(homedir(), "Library", "Application Support", "acervo", "acervo.db");
 
 // The entire chain is rendered into a normal AAC soundtrack. Fixed programme
@@ -45,7 +53,21 @@ const clips = requestedIds.size
   ? allClips.filter((clip) => requestedIds.has(String(clip.id)))
   : allClips;
 const selected = new Set(allClips.map((clip) => String(clip.id)));
-mkdirSync(audioDir, { recursive: true });
+for (const directory of audioDirs) mkdirSync(directory, { recursive: true });
+
+function assignAudioShard(clip) {
+  if (explicitAudioDir) return 1;
+  if (clip.audioShard === 1 || clip.audioShard === 2) return clip.audioShard;
+  if (existsSync(join(audioDirs[0], `${clip.id}.m4a`))) return 1;
+  if (existsSync(join(audioDirs[1], `${clip.id}.m4a`))) return 2;
+  return 2;
+}
+
+function audioPath(clip) {
+  return join(audioDirs[clip.audioShard - 1], `${clip.id}.m4a`);
+}
+
+for (const clip of clips) clip.audioShard = assignAudioShard(clip);
 
 function databaseSources() {
   if (!existsSync(database)) return new Map();
@@ -209,7 +231,7 @@ async function stageMetrics(clip, source, settings) {
 }
 
 async function renderMaster(clip, source, destination, settings) {
-  const temporary = join(audioDir, `.${clip.id}.mastering.m4a`);
+  const temporary = join(dirname(destination), `.${clip.id}.mastering.m4a`);
   await run("ffmpeg", [
     "-nostdin", "-hide_banner", "-loglevel", "error",
     "-i", source.path,
@@ -249,7 +271,7 @@ let reusedMasterCount = 0;
 async function masterClip(clip) {
   const source = sourceFor.get(String(clip.id));
   const signature = sourceSignature(source);
-  const destination = join(audioDir, `${clip.id}.m4a`);
+  const destination = audioPath(clip);
   const canReuse = !forceMaster
     && existsSync(destination)
     && clip.audioProfile === masteringProfile
@@ -375,14 +397,16 @@ async function masterWorker() {
 await Promise.all(Array.from({ length: Math.min(4, clips.length) }, () => masterWorker()));
 process.stdout.write(` (${reusedMasterCount} already current)\n`);
 
-for (const name of readdirSync(audioDir)) {
-  const id = name.endsWith(".m4a") ? name.slice(0, -4) : "";
-  if (!requestedIds.size && /^\d+$/.test(id) && !selected.has(id)) rmSync(join(audioDir, name));
+for (const directory of audioDirs) {
+  for (const name of readdirSync(directory)) {
+    const id = name.endsWith(".m4a") ? name.slice(0, -4) : "";
+    if (!requestedIds.size && /^\d+$/.test(id) && !selected.has(id)) rmSync(join(directory, name));
+  }
 }
 
 for (const clip of clips) {
   const media = join(mediaDir, `${clip.id}.mp4`);
-  if (!existsSync(join(audioDir, `${clip.id}.m4a`))) throw new Error(`Missing master for clip ${clip.id}`);
+  if (!existsSync(audioPath(clip))) throw new Error(`Missing master for clip ${clip.id}`);
   clip.rev = Math.floor(statSync(media).mtimeMs);
   clip.lufs = clip.audioLufs;
   clip.lra = clip.audioLra;
@@ -395,4 +419,4 @@ for (const clip of clips) {
 }
 
 saveClips();
-console.log(`Prepared ${clips.length} noise-aware original-source masters in ${audioDir}.`);
+console.log(`Prepared ${clips.length} noise-aware original-source masters across ${audioDirs.length} audio shard${audioDirs.length === 1 ? "" : "s"}.`);

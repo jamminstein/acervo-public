@@ -7,7 +7,10 @@ const timelineShell = document.querySelector("#timeline-shell");
 const timeline = document.querySelector("#timeline");
 const waveformCanvas = document.querySelector("#waveform");
 const waveformContext = waveformCanvas.getContext("2d");
-const audioBase = "https://jamminstein.github.io/acervo-public-audio";
+const audioBases = {
+  1: "https://jamminstein.github.io/acervo-public-audio",
+  2: "https://jamminstein.github.io/acervo-public-audio-2",
+};
 
 // The soundtrack has a permanent HTML audio element so iOS and car systems keep
 // recognizing it after Safari leaves the foreground. Only the selected tile
@@ -312,7 +315,7 @@ async function toggle(tile) {
   await playTile(tile);
 }
 
-const response = await fetch("./clips.json?v=20260903-3");
+const response = await fetch("./clips.json?v=20260903-4");
 const clips = await response.json();
 const randomizedClips = shuffle(clips);
 
@@ -324,6 +327,7 @@ for (const [index, clip] of randomizedClips.entries()) {
   tile.ariaLabel = `Play or stop clip ${index + 1}`;
   tile.dataset.poster = poster;
   tile.dataset.src = `./media/${clip.id}.mp4?v=${clip.rev}`;
+  const audioBase = audioBases[clip.audioShard || 1];
   tile.dataset.audioSrc = clip.audioRev ? `${audioBase}/${clip.id}.m4a?v=${clip.audioRev}` : "";
   tile.dataset.gainDb = String(clip.audioRev ? 0 : (clip.safetyGainDb ?? clip.gainDb ?? 0));
   tile.dataset.waveform = clip.waveform || "";

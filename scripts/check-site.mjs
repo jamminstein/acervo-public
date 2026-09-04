@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +10,10 @@ const app = readFileSync(join(root, "app.js"), "utf8");
 const styles = readFileSync(join(root, "styles.css"), "utf8");
 const sync = readFileSync(join(root, "scripts", "sync-from-acervo.mjs"), "utf8");
 const clips = JSON.parse(readFileSync(join(root, "clips.json"), "utf8"));
-const audioRoot = resolve(root, "..", "acervo-public-audio");
+const audioRoots = [
+  resolve(root, "..", "acervo-public-audio"),
+  resolve(root, "..", "acervo-public-audio-2"),
+];
 
 assert.ok(clips.length > 0, "the page needs at least one public clip");
 assert.match(html, /id="clips"/);
@@ -32,6 +35,7 @@ assert.doesNotMatch(app, /AudioContext|createMediaElementSource|createDynamicsCo
 assert.match(app, /gainFromDecibels/);
 assert.match(app, /tile\.dataset\.audioSrc \|\| tile\.dataset\.src/);
 assert.match(app, /https:\/\/jamminstein\.github\.io\/acervo-public-audio/);
+assert.match(app, /https:\/\/jamminstein\.github\.io\/acervo-public-audio-2/);
 assert.match(app, /function prefetchNextAudio/);
 assert.match(app, /cache: "force-cache"/);
 assert.match(app, /clip\.safetyGainDb/);
@@ -55,12 +59,14 @@ let publishedBytes = statSync(join(root, "index.html")).size
   + statSync(join(root, "app.js")).size
   + statSync(join(root, "styles.css")).size
   + statSync(join(root, "clips.json")).size;
-let audioBytes = 0;
+const audioBytes = [0, 0];
+const selected = new Map(clips.map((clip) => [String(clip.id), clip]));
 
 for (const clip of clips) {
   const video = join(root, "media", `${clip.id}.mp4`);
   const poster = join(root, "posters", `${clip.id}.jpg`);
-  const audio = join(audioRoot, `${clip.id}.m4a`);
+  assert.ok(clip.audioShard === 1 || clip.audioShard === 2, `invalid audio shard for ${clip.id}`);
+  const audio = join(audioRoots[clip.audioShard - 1], `${clip.id}.m4a`);
   assert.ok(existsSync(video) && statSync(video).size > 0, `missing video ${clip.id}`);
   assert.ok(existsSync(poster) && statSync(poster).size > 0, `missing poster ${clip.id}`);
   assert.ok(existsSync(audio) && statSync(audio).size > 0, `missing mastered audio ${clip.id}`);
@@ -95,10 +101,18 @@ for (const clip of clips) {
   ], { encoding: "utf8" })).streams || [];
   assert.ok(!streams.some((stream) => stream.codec_type === "audio"), `video ${clip.id} still duplicates its old audio`);
   publishedBytes += statSync(video).size + statSync(poster).size;
-  audioBytes += statSync(audio).size;
+  audioBytes[clip.audioShard - 1] += statSync(audio).size;
 }
 
 assert.ok(publishedBytes < 1_000_000_000, `published site is ${(publishedBytes / 1_000_000).toFixed(1)} MB and exceeds GitHub Pages' 1 GB limit`);
-assert.ok(audioBytes < 1_000_000_000, `published audio is ${(audioBytes / 1_000_000).toFixed(1)} MB and exceeds GitHub Pages' 1 GB limit`);
+for (const [index, directory] of audioRoots.entries()) {
+  for (const name of readdirSync(directory)) {
+    const match = name.match(/^(\d+)\.m4a$/);
+    if (!match) continue;
+    const clip = selected.get(match[1]);
+    assert.ok(clip && clip.audioShard === index + 1, `unexpected audio file ${name} in shard ${index + 1}`);
+  }
+  assert.ok(audioBytes[index] < 1_000_000_000, `published audio shard ${index + 1} is ${(audioBytes[index] / 1_000_000).toFixed(1)} MB and exceeds GitHub Pages' 1 GB limit`);
+}
 
-console.log(`Verified ${clips.length} public clips: ${(publishedBytes / 1_000_000).toFixed(1)} MB visual site and ${(audioBytes / 1_000_000).toFixed(1)} MB mastered audio site.`);
+console.log(`Verified ${clips.length} public clips: ${(publishedBytes / 1_000_000).toFixed(1)} MB visual site; audio shards ${audioBytes.map((bytes) => `${(bytes / 1_000_000).toFixed(1)} MB`).join(" + ")}.`);

@@ -8,8 +8,9 @@ made from its original archive file. A soft noise-floor expander, fixed programm
 gain, compression, tonal outlier correction, channel repair, and true-peak limiter
 are baked into 96 kbps AAC without modifying the source archive.
 
-The mastered soundtracks are published separately from the visual grid at
-`jamminstein/acervo-public-audio` so both GitHub Pages artifacts remain below 1 GB.
+The mastered soundtracks are published separately from the visual grid across
+`jamminstein/acervo-public-audio` and `jamminstein/acervo-public-audio-2` so
+every GitHub Pages artifact remains below 1 GB.
 
 Run `node scripts/sync-from-acervo.mjs` to refresh the page from ACERVO, then
 `node scripts/check-site.mjs` to verify it before publishing.

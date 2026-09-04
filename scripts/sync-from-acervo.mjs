@@ -24,7 +24,12 @@ mkdirSync(posterDir, { recursive: true });
 const query = `
   SELECT id, path, duration, mtime, width, height
   FROM items
-  WHERE public=1 AND hidden=0 AND missing=0 AND kind='video'
+  WHERE public=1
+    AND hidden=0
+    AND missing=0
+    AND kind='video'
+    AND channels>0
+    AND COALESCE(loudness_status, '') <> 'no_signal'
   ORDER BY added_at DESC
 `;
 const clips = JSON.parse(execFileSync("sqlite3", ["-json", database, query], { encoding: "utf8" }) || "[]");
