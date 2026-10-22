@@ -328,12 +328,12 @@ const response = await fetch("./clips.json?v=20260904-2");
 const clips = await response.json();
 const randomizedClips = shuffle(clips);
 
-for (const [index, clip] of randomizedClips.entries()) {
+for (const clip of randomizedClips) {
   const tile = document.createElement("button");
   const poster = `./posters/${clip.id}.jpg?v=${clip.rev}`;
   tile.className = "video-tile";
   tile.type = "button";
-  tile.ariaLabel = `Play or stop clip ${index + 1}`;
+  tile.ariaLabel = `Play or stop clip ${clip.id}`;
   tile.dataset.clipId = String(clip.id);
   tile.dataset.poster = poster;
   tile.dataset.src = `./media/${clip.id}.mp4?v=${clip.rev}`;
@@ -365,8 +365,12 @@ for (const [index, clip] of randomizedClips.entries()) {
   playMark.className = "tile-play";
   playMark.setAttribute("aria-hidden", "true");
 
+  const id = document.createElement("span");
+  id.className = "clip-id";
+  id.textContent = clip.id;
+
   tile.addEventListener("click", () => void toggle(tile));
-  tile.append(image, preview, playMark);
+  tile.append(image, preview, playMark, id);
   tiles.push(tile);
   grid.append(tile);
 }
