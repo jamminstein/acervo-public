@@ -3,10 +3,10 @@
 }
 
 @font-face {
-  font-family: "xxQueen Basic";
-  src: url("https://jamminstein.github.io/tiago-lol/assets/fonts/xxqueen-basic.ttf") format("truetype");
-  font-style: normal;
+  font-family: 'Unthinkable Pen';
+  src: url('./assets/fonts/unthinkable-pen.woff2') format('woff2');
   font-weight: 400;
+  font-style: normal;
   font-display: swap;
 }
 
@@ -27,58 +27,49 @@ body {
 }
 
 .tiago-portal-nav {
-  position: fixed;
-  top: 12px;
-  left: 50%;
-  right: auto;
-  z-index: 2147483647;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 1.35rem;
+  gap: 12px clamp(18px, 4vw, 36px);
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 2147483647;
   width: max-content;
-  max-width: calc(100vw - 24px);
-  padding: 8px 15px 7px;
-  box-sizing: border-box;
+  max-width: calc(100% - 32px);
   transform: translateX(-50%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.72);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.16);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  backdrop-filter: blur(14px) saturate(150%);
   color: #fff;
-  font-family: "xxQueen Basic", serif;
-  font-size: 12px;
-  font-style: normal;
+  font-family: 'Unthinkable Pen', ui-monospace, monospace;
+  font-feature-settings: 'calt' 1, 'palt' 1;
+  font-synthesis: none;
   font-weight: 400;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  text-transform: lowercase;
+  text-shadow: 0 1px 5px #000, 0 0 12px #0008;
+  font-size: 21px;
+  line-height: 1.6;
 }
 
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .tiago-portal-nav {
-    background: rgba(0, 0, 0, 0.92);
-  }
-}
-
-.tiago-portal-nav a,
-.tiago-portal-nav a:visited {
-  color: #fff;
+.tiago-portal-nav a {
+  color: inherit;
   text-decoration: none;
-  opacity: 1;
-  transition: opacity 140ms ease;
+  padding: 8px 2px;
+  text-underline-offset: 8px;
+  text-decoration-thickness: 1px;
+  transform: rotate(-3deg);
 }
 
-.tiago-portal-nav a:hover,
-.tiago-portal-nav a:focus-visible {
-  opacity: 0.62;
-}
+.tiago-portal-nav a:nth-child(2) { transform: rotate(1.5deg) translateY(3px); }
+.tiago-portal-nav a:nth-child(3) { transform: rotate(-1deg) translateY(-2px); }
+.tiago-portal-nav a:nth-child(4) { transform: rotate(2deg); }
+.tiago-portal-nav a[aria-current],
+.tiago-portal-nav a:hover { text-decoration: underline; }
+.tiago-portal-nav a:focus-visible { outline: 1px dashed currentColor; outline-offset: 5px; }
 
-.tiago-portal-nav a:focus-visible {
-  outline: 1px solid currentColor;
-  outline-offset: 2px;
+@media (max-width: 520px) {
+  .tiago-portal-nav { font-size: 17px; gap: 8px 12px; }
+}
+@media (max-width: 360px) {
+  .tiago-portal-nav { font-size: 15px; gap: 8px 10px; }
 }
 
 button,
