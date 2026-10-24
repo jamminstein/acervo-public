@@ -23,7 +23,7 @@
     <title>ACERVO</title>
     <link rel="preconnect" href="https://jamminstein.github.io" crossorigin />
     <link rel="preload" href="./assets/fonts/unthinkable-pen.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=pen-menu-2" />
+    <link rel="stylesheet" href="./styles.css?v=pen-player-1" />
   </head>
   <body>
     <nav class="tiago-portal-nav" aria-label="Elsewhere">
@@ -35,10 +35,12 @@
     <main id="clips" class="video-grid" aria-label="ACERVO musical video selection"></main>
     <div id="media-host" class="media-host" aria-hidden="true"></div>
     <footer id="transport" class="transport" aria-label="Playback controls" hidden>
+      <button id="transport-previous" class="transport-button transport-previous" type="button" aria-label="Previous clip"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M28 7 L24 13 L29 16 L12 22 L26 29 L25 34 L29 31 L28 7 M8 9 L10 18 L7 24 L9 32"/></svg></button>
       <button id="transport-toggle" class="transport-button transport-toggle" type="button" aria-label="Pause">
-        <span aria-hidden="true"></span>
+        <svg viewBox="0 0 40 40" aria-hidden="true"><path id="transport-sketch" d="M12 7 L14 13 L11 17 L30 22 L22 25 L10 33 L12 24 L10 12 Z"/></svg>
       </button>
       <div id="timeline-shell" class="timeline-shell">
+        <output id="current-clip" aria-label="Current clip"></output>
         <canvas id="waveform" class="waveform" aria-hidden="true"></canvas>
         <input
           id="timeline"
@@ -52,9 +54,19 @@
         />
       </div>
       <button id="transport-next" class="transport-button transport-next" type="button" aria-label="Play another clip">
-        <span aria-hidden="true"></span>
+        <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8 L13 14 L11 18 L28 23 L12 29 L14 34 L9 31 L10 8 M32 8 L30 17 L33 24 L31 32"/></svg>
       </button>
     </footer>
-    <script type="module" src="./app.js?v=20260904-2"></script>
+<div id="drumMachine" role="group" aria-label="Drum machine: J kick, K snare, L hi-hat">
+<button id="drumRefresh" class="drum-refresh" aria-label="Load new drum samples"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15 7 Q12 2 7 5 Q2 8 5 13 Q9 18 14 13 M15 3 L16 8 L11 8"/></svg></button>
+<button class="drum-grab" aria-label="Move drum machine"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M16 10 L24 9"/></svg></button>
+<svg class="drum-shell" viewBox="0 0 120 66" aria-hidden="true"><path d="M8 14 L110 10 L116 58 L5 61 Z M13 22 L106 19 M17 8 L32 6 M82 5 L101 7"/><path d="M17 18 L21 17 M27 17 L31 17 M87 15 L91 15 M98 14 L103 14"/></svg>
+<button class="drum-pad" data-drum="kick" aria-label="Kick drum (J)"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 5 L23 4 L24 23 L4 24 Z M9 10 L17 10 L17 18 Q16 23 11 19"/></svg></button>
+<button class="drum-pad" data-drum="snare" aria-label="Snare drum (K)"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 5 L23 6 L24 24 L5 23 Z M10 9 L10 20 M18 9 L11 15 L19 20"/></svg></button>
+<button class="drum-pad" data-drum="hat" aria-label="Hi-hat (L)"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 4 L24 5 L23 23 L4 24 Z M11 9 L10 20 L19 19"/></svg></button>
+</div>
+    <script type="module" src="./drum-machine.js?v=pen-player-1"></script>
+    <script type="module" src="./acervo-drums.js?v=pen-player-1"></script>
+    <script type="module" src="./app.js?v=pen-player-1"></script>
   </body>
 </html>

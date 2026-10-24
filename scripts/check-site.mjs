@@ -57,8 +57,8 @@ assert.doesNotMatch(html, /playlist-indicator|Shuffled continuous playlist/, "sh
 assert.match(html, /id="waveform"/);
 assert.match(app, /drawWaveform/);
 assert.match(app, /clip\.waveform/);
-assert.match(app, /waveformContext\.fill\(shape\)/);
-assert.doesNotMatch(app, /barWidth/, "the waveform must be a continuous shape, not traces");
+assert.match(app, /waveformContext\.stroke\(shape\)/);
+assert.doesNotMatch(app, /barWidth/, "the waveform must be one continuous pen line, not bars");
 assert.match(styles, /\.tile-play/);
 assert.match(sync, /master-public-audio\.mjs/);
 assert.match(sync, /"-map", "0:v:0", "-an"/);

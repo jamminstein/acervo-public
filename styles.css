@@ -138,64 +138,38 @@ input {
   bottom: 3px;
   z-index: 1;
   color: rgb(255 255 255 / 0.4);
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
+  font-family: 'Unthinkable Pen', ui-monospace, monospace;
+  font-feature-settings: 'calt' 1, 'palt' 1;
+  font-size: 12px;
   line-height: 1;
-  text-shadow: 0 0 2px #000;
   pointer-events: none;
 }
 
 .video-tile:focus-visible {
   z-index: 1;
-  outline: 3px solid #fff;
+  outline: 1px dashed #fff;
   outline-offset: -3px;
 }
 
+/* The same original pen paths used by tiago.lol. */
 .tile-play {
   position: absolute;
   z-index: 2;
-  top: 50%;
-  left: 50%;
-  width: clamp(30px, 4vw, 48px);
+  top: 50%; left: 50%;
+  width: clamp(30px, 4vw, 44px);
   aspect-ratio: 1;
-  border: 1px solid rgb(255 255 255 / 50%);
-  border-radius: 50%;
-  background: rgb(0 0 0 / 58%);
-  box-shadow: 0 3px 18px rgb(0 0 0 / 35%);
+  color: #fff;
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, -50%) scale(0.9);
-  transition: opacity 140ms ease, transform 140ms ease;
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  transform: translate(-50%, -50%) rotate(-4deg);
+  transition: opacity 140ms ease;
 }
-
-.tile-play::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 53%;
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-  border-left: 10px solid #fff;
-  transform: translate(-50%, -50%);
-}
-
+.tile-play svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tile-pause-sketch { display: none; }
 .video-tile:is(:hover, :focus-visible) .tile-play,
-.video-tile.is-active .tile-play {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-}
-
-.video-tile.is-active .tile-play::before {
-  left: 50%;
-  width: 4px;
-  height: 13px;
-  border: 0;
-  border-right: 4px solid #fff;
-  border-left: 4px solid #fff;
-  transform: translate(-50%, -50%);
-}
+.video-tile.is-active .tile-play { opacity: 1; }
+.video-tile.is-active:not(.is-paused) .tile-play-sketch { display: none; }
+.video-tile.is-active:not(.is-paused) .tile-pause-sketch { display: block; }
 
 .media-host {
   position: fixed;
@@ -208,175 +182,71 @@ input {
 
 .transport {
   position: fixed;
-  z-index: 10;
-  right: max(12px, env(safe-area-inset-right));
-  bottom: max(10px, env(safe-area-inset-bottom));
-  left: max(12px, env(safe-area-inset-left));
+  z-index: 30;
+  left: 50%;
+  bottom: max(28px, calc(env(safe-area-inset-bottom) + 16px));
+  transform: translateX(-50%);
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  grid-template-columns: 44px 44px minmax(0, 200px) 44px;
   align-items: center;
-  gap: 12px;
-  min-height: 54px;
-  padding: 8px 10px;
-  border: 1px solid rgb(255 255 255 / 14%);
-  border-radius: 18px;
-  background: rgb(12 12 12 / 84%);
-  box-shadow: 0 10px 35px rgb(0 0 0 / 48%);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  gap: 7px;
+  width: min(100% - 32px, 400px);
+  color: #fff;
 }
-
-.transport[hidden] {
-  display: none;
-}
-
+.transport[hidden] { display: none; }
 .transport-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  color: #fff;
-  background: transparent;
-  appearance: none;
-  -webkit-appearance: none;
+  color: inherit;
+  background: none;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-
-.transport-button:is(:hover, :focus-visible) {
-  background: rgb(255 255 255 / 12%);
-  outline: none;
-}
-
-.transport-toggle span::before,
-.transport-toggle span::after {
-  content: "";
+.transport-button svg { width: 26px; height: 29px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.transport-previous svg,.transport-next svg { width: 22px; height: 25px; }
+.transport-previous { transform: rotate(-3deg); }
+.transport-next { transform: rotate(2deg); }
+.transport-button:hover { opacity: .7; }
+.transport-button:focus-visible { outline: 1px dashed currentColor; outline-offset: 2px; }
+.timeline-shell { position: relative; width: 100%; min-width: 0; height: 44px; transform: rotate(2deg); }
+.waveform { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+#current-clip {
   position: absolute;
-  top: 12px;
-  width: 4px;
-  height: 14px;
-  border-radius: 1px;
-  background: currentColor;
-}
-
-.transport-toggle span::before {
-  left: 13px;
-}
-
-.transport-toggle span::after {
-  right: 13px;
-}
-
-.transport-toggle.is-paused span::before {
-  top: 11px;
-  left: 15px;
-  width: 0;
-  height: 0;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-left: 12px solid currentColor;
-  border-radius: 0;
-  background: transparent;
-}
-
-.transport-toggle.is-paused span::after {
-  display: none;
-}
-
-.transport-next span::before {
-  content: "";
-  position: absolute;
-  top: 11px;
-  left: 12px;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-left: 11px solid currentColor;
-}
-
-.transport-next span::after {
-  content: "";
-  position: absolute;
-  top: 11px;
-  right: 11px;
-  width: 3px;
-  height: 16px;
-  border-radius: 1px;
-  background: currentColor;
-}
-
-.timeline-shell {
-  position: relative;
-  width: 100%;
-  min-width: 0;
-  height: 34px;
-}
-
-.waveform {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
+  top: -9px;
+  left: 45%;
+  font: 14px/1.2 'Unthinkable Pen', ui-monospace, monospace;
+  font-feature-settings: 'calt' 1, 'palt' 1;
+  transform: rotate(-5deg);
   pointer-events: none;
 }
-
 .timeline {
   position: absolute;
   z-index: 1;
   inset: 0;
   width: 100%;
-  height: 34px;
+  height: 44px;
   margin: 0;
   padding: 0;
   border: 0;
-  outline: 0;
   background: transparent;
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
   touch-action: manipulation;
-  --progress: 0%;
+  color: inherit;
 }
-
-.timeline::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 2px;
-  background: linear-gradient(to right, #fff 0 var(--progress), rgb(255 255 255 / 25%) var(--progress) 100%);
-}
-
-.timeline::-moz-range-track {
-  height: 3px;
-  border-radius: 2px;
-  background: rgb(255 255 255 / 25%);
-}
-
-.timeline::-moz-range-progress {
-  height: 3px;
-  border-radius: 2px;
-  background: #fff;
-}
-
-.timeline::-webkit-slider-thumb {
-  width: 12px;
-  height: 12px;
-  margin-top: -4.5px;
-  border: 0;
-  border-radius: 50%;
-  background: #fff;
-  appearance: none;
-  -webkit-appearance: none;
-}
-
-.timeline::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  border: 0;
-  border-radius: 50%;
-  background: #fff;
-}
+.timeline:focus-visible { outline: 1px dashed currentColor; outline-offset: 3px; }
+.timeline::-webkit-slider-runnable-track { height: 1px; background: transparent; }
+.timeline::-moz-range-track,.timeline::-moz-range-progress { height: 1px; background: transparent; }
+.timeline::-webkit-slider-thumb { width: 9px; height: 12px; margin-top: -5px; border: 1px solid #fff; border-radius: 43% 60% 48% 37%; background: #080808; appearance: none; -webkit-appearance: none; transform: rotate(-17deg); }
+.timeline::-moz-range-thumb { width: 9px; height: 12px; border: 1px solid #fff; border-radius: 43% 60% 48% 37%; background: #080808; transform: rotate(-17deg); }
 
 @media (hover: none) {
   .video-tile:not(.is-active) .tile-play {
@@ -401,16 +271,7 @@ input {
     outline-width: 2px;
   }
 
-  .transport {
-    right: max(7px, env(safe-area-inset-right));
-    bottom: max(7px, env(safe-area-inset-bottom));
-    left: max(7px, env(safe-area-inset-left));
-    grid-template-columns: 36px minmax(0, 1fr) 36px;
-    gap: 7px;
-    min-height: 50px;
-    padding: 6px 7px;
-    border-radius: 16px;
-  }
+
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -420,4 +281,55 @@ input {
   .tile-play {
     transition: none;
   }
+}
+
+#drumMachine{position:fixed;left:24px;bottom:28px;width:120px;height:66px;z-index:20;color:#fff;transform:rotate(-9deg)}
+#drumMachine svg{fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round;display:block;overflow:visible}
+.drum-shell{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.drum-grab{position:absolute;left:40px;top:0;width:40px;height:25px;padding:0;border:0;background:transparent;color:inherit;cursor:grab;touch-action:none}
+.drum-grab svg{width:40px;height:20px}
+.drum-grab:active{cursor:grabbing}
+.drum-grab:focus-visible{outline:1px dashed currentColor;outline-offset:2px}
+.drum-pad{position:absolute;top:27px;width:29px;height:29px;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.drum-pad[data-drum=kick]{left:15px}.drum-pad[data-drum=snare]{left:47px}.drum-pad[data-drum=hat]{left:79px}
+.drum-pad svg{width:29px;height:29px;transition:transform .08s,opacity .08s}
+.drum-pad.hit svg{transform:translateY(2px) rotate(4deg);opacity:.45}
+.drum-pad:focus-visible{outline:1px dashed currentColor;outline-offset:3px}
+
+.drum-refresh{position:absolute;right:-20px;top:auto;bottom:-12px;width:25px;height:25px;padding:0;border:0;background:transparent;color:inherit;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.drum-refresh svg{width:16px;height:16px}
+.drum-refresh:disabled{opacity:.4;cursor:wait}
+.drum-refresh:focus-visible{outline:1px dashed currentColor;outline-offset:1px}
+#drumRefresh.spinning svg{animation:drum-refresh-turn .6s ease-in-out 1;transform-origin:center}
+@keyframes drum-refresh-turn{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#drumRefresh.spinning svg{animation:none}}
+
+#drumMachine { touch-action: auto; }
+.drum-pad { height: 36px; }
+.drum-pad svg { pointer-events: none; }
+.drum-pad[data-drum=snare] { transform: rotate(2deg); }
+.drum-pad[data-drum=hat] { transform: rotate(-2deg); }
+@media (max-width: 720px) {
+  #drumMachine { left: 22px; bottom: max(104px, calc(env(safe-area-inset-bottom) + 92px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drum-pad svg { transition: none; }
+}
+
+/* A little negative space for the white pen marks, without a player card. */
+body::after {
+  content: '';
+  position: fixed;
+  z-index: 10;
+  inset: auto 0 0;
+  height: calc(108px + env(safe-area-inset-bottom));
+  background: #000;
+  pointer-events: none;
+}
+.video-grid,.has-transport .video-grid {
+  padding-bottom: calc(108px + env(safe-area-inset-bottom));
+}
+@media (max-width: 720px) {
+  body::after { height: calc(184px + env(safe-area-inset-bottom)); }
+  .video-grid,.has-transport .video-grid { padding-bottom: calc(184px + env(safe-area-inset-bottom)); }
 }

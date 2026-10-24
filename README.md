@@ -15,3 +15,15 @@ every GitHub Pages artifact remains below 1 GB.
 
 Run `node scripts/sync-from-acervo.mjs` to refresh the page from ACERVO, then
 `node scripts/check-site.mjs` to verify it before publishing.
+
+
+The interface shares tiago.lol's original pen paths: outlined play/pause/skip
+marks, a single-line waveform made from each clip's cached audio envelope,
+and the handwritten clip IDs. The native audio element and Media Session
+integration still handle the archive soundtrack.
+
+The little three-pad drum machine uses the same 48 samples as tiago.lol.
+Play with J (kick), K (snare), and L (hat), or press the pads. The refresh
+arrow chooses another kit. Drag its top handle or use the arrow keys while
+the handle has focus to move it. Its separate, limited Web Audio path does
+not route or process the archive soundtrack.
