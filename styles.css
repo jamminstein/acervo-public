@@ -44,8 +44,7 @@ body {
   font-feature-settings: 'calt' 1, 'palt' 1;
   font-synthesis: none;
   font-weight: 400;
-  text-shadow: 0 1px 5px #000, 0 0 12px #0008;
-  font-size: 21px;
+  font-size: 17px;
   line-height: 1.6;
 }
 
@@ -66,10 +65,10 @@ body {
 .tiago-portal-nav a:focus-visible { outline: 1px dashed currentColor; outline-offset: 5px; }
 
 @media (max-width: 520px) {
-  .tiago-portal-nav { font-size: 17px; gap: 8px 12px; }
+  .tiago-portal-nav { font-size: 14px; gap: 8px 12px; }
 }
 @media (max-width: 360px) {
-  .tiago-portal-nav { font-size: 15px; gap: 8px 10px; }
+  .tiago-portal-nav { font-size: 13px; gap: 8px 10px; }
 }
 
 button,
