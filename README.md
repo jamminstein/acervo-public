@@ -17,10 +17,9 @@ Run `node scripts/sync-from-acervo.mjs` to refresh the page from ACERVO, then
 `node scripts/check-site.mjs` to verify it before publishing.
 
 
-The interface shares tiago.lol's original pen paths: outlined play/pause/skip
-marks, a single-line waveform made from each clip's cached audio envelope,
-and the handwritten clip IDs. The native audio element and Media Session
-integration still handle the archive soundtrack.
+The handwritten menu and clip IDs share tiago.lol's pen style. The original
+transport bar, seek waveform, and tile play/pause icons remain in place. The
+drum machine floats independently over the video grid, without a bottom strip.
 
 The little three-pad drum machine uses the same 48 samples as tiago.lol.
 Play with J (kick), K (snare), and L (hat), or press the pads. The refresh

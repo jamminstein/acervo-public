@@ -1,5 +1,3 @@
-const PLAY_SKETCH = "M12 7 L14 13 L11 17 L30 22 L22 25 L10 33 L12 24 L10 12 Z";
-const PAUSE_SKETCH = "M12 8 L14 14 L10 22 L12 32 M27 7 L24 17 L28 23 L25 32";
 const grid = document.querySelector("#clips");
 const mediaHost = document.querySelector("#media-host");
 const transport = document.querySelector("#transport");
@@ -160,30 +158,38 @@ function drawWaveform(progress = Number(timeline.value) / 100) {
   waveformContext.setTransform(scale, 0, 0, scale, 0, 0);
   waveformContext.clearRect(0, 0, width, height);
   const values = waveformForTile(activeTile);
+  if (!values?.length) return;
+
   const center = height / 2;
   const playedUntil = width * Math.max(0, Math.min(1, progress));
+  const amplitudes = Array.from(values, (_, index) => {
+    const start = Math.max(0, index - 2);
+    const end = Math.min(values.length, index + 3);
+    let sum = 0;
+    for (let neighbor = start; neighbor < end; neighbor += 1) sum += values[neighbor];
+    return 1.5 + (sum / (end - start) / 255) * (center - 3);
+  });
   const shape = new Path2D();
-  // The clip's real offline envelope, drawn as one spare pen line.
-  // No music rerouting or decorative fake audio analyser is required.
-  const count = 23;
-  for (let index = 0; index < count; index += 1) {
-    const amplitude = values?.length ? values[Math.round(index * (values.length - 1) / (count - 1))] / 255 : 0;
-    const x = 2 + index * (width - 4) / (count - 1);
-    const y = center + Math.sin(index * 2.7) * (0.65 + amplitude * (center - 4));
-    if (index === 0) shape.moveTo(x, y);
-    else shape.lineTo(x, y);
+
+  shape.moveTo(0, center);
+  for (const [index, amplitude] of amplitudes.entries()) {
+    const x = (index / (amplitudes.length - 1)) * width;
+    shape.lineTo(x, center - amplitude);
   }
-  waveformContext.lineWidth = 1.15;
-  waveformContext.lineCap = "round";
-  waveformContext.lineJoin = "round";
-  waveformContext.strokeStyle = "rgba(255,255,255,0.4)";
-  waveformContext.stroke(shape);
+  for (let index = amplitudes.length - 1; index >= 0; index -= 1) {
+    const x = (index / (amplitudes.length - 1)) * width;
+    shape.lineTo(x, center + amplitudes[index]);
+  }
+  shape.closePath();
+
+  waveformContext.fillStyle = "rgba(255,255,255,0.16)";
+  waveformContext.fill(shape);
   waveformContext.save();
   waveformContext.beginPath();
   waveformContext.rect(0, 0, playedUntil, height);
   waveformContext.clip();
-  waveformContext.strokeStyle = "rgba(255,255,255,0.95)";
-  waveformContext.stroke(shape);
+  waveformContext.fillStyle = "rgba(255,255,255,0.52)";
+  waveformContext.fill(shape);
   waveformContext.restore();
 }
 
@@ -193,11 +199,7 @@ function updateTransport() {
   timeline.value = String(progress);
   timeline.style.setProperty("--progress", `${progress}%`);
   transportToggle.classList.toggle("is-paused", audioPlayer.paused);
-  activeTile?.classList.toggle("is-paused", audioPlayer.paused);
   transportToggle.ariaLabel = audioPlayer.paused ? "Play" : "Pause";
-  document.querySelector("#transport-sketch").setAttribute("d", audioPlayer.paused ? PLAY_SKETCH : PAUSE_SKETCH);
-  document.querySelector("#current-clip").textContent = activeTile?.dataset.clipId || "";
-  timeline.setAttribute("aria-valuetext", `${Math.floor(audioPlayer.currentTime || 0)} seconds of ${Number.isFinite(duration) ? Math.floor(duration) : 0}`);
   drawWaveform(progress / 100);
 }
 
@@ -362,7 +364,6 @@ for (const clip of randomizedClips) {
   const playMark = document.createElement("span");
   playMark.className = "tile-play";
   playMark.setAttribute("aria-hidden", "true");
-  playMark.innerHTML = `<svg viewBox="0 0 40 40"><path class="tile-play-sketch" d="${PLAY_SKETCH}"/><path class="tile-pause-sketch" d="${PAUSE_SKETCH}"/></svg>`;
 
   const id = document.createElement("span");
   id.className = "clip-id";
@@ -425,8 +426,6 @@ transportToggle.addEventListener("click", () => {
   if (audioPlayer.paused) void resumePlayback();
   else audioPlayer.pause();
 });
-
-document.querySelector("#transport-previous").addEventListener("click", () => void playPrevious());
 
 transportNext.addEventListener("click", () => {
   playlistRunning = true;
